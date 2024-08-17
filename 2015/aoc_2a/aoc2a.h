@@ -1,11 +1,11 @@
-#ifndef AOC2_H
-#define AOC2_H
+#ifndef AOC2A_H
+#define AOC2A_H
 
 #include "../../shared/helper.h"
 #include <sstream>
 #include <vector>
 
-namespace aoc2
+namespace aoc2a
 {
     std::vector<int> getNumbersFromSplit(std::string& line, char separator)
     {
