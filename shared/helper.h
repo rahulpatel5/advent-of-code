@@ -16,6 +16,12 @@ namespace helper
         int interim{ (a < b) ? a : b };
         return (interim < c) ? interim : c;
     }
+
+    int maxThreeNumbers(int a, int b, int c)
+    {
+        int interim{ (a < b) ? b : a };
+        return (interim < c) ? c : interim;
+    }
 }
 
 #endif
