@@ -10,6 +10,12 @@ namespace helper
     {
         return std::ranges::count(input, character);
     }
+
+    int minThreeNumbers(int a, int b, int c)
+    {
+        int interim{ (a < b) ? a : b };
+        return (interim < c) ? interim : c;
+    }
 }
 
 #endif
