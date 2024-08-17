@@ -1,6 +1,6 @@
 #include "../../shared/utils.h"
 #include "../../shared/helper.h"
-#include "aoc2a.h"
+#include "aoc2.h"
 #include <chrono>
 #include <iostream>
 #include <fstream>
@@ -16,7 +16,7 @@ int main()
     utils::CheckFileError(file);
     std::string input{ utils::ReadFile(file) };
     
-    int area{ aoc2a::processLines(input) };
+    int area{ aoc2::processLines(input) };
     std::cout << "Need " << area << " square feet of wrapping paper.\n";
 
     auto stopTime{ std::chrono::high_resolution_clock::now() };
