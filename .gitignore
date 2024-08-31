@@ -33,3 +33,6 @@
 
 # Settings
 /.vscode/
+
+# External packages
+**/external/*
