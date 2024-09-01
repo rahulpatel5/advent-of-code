@@ -1,0 +1,3 @@
+[submodule "2015/aoc_4a/external/MD5"]
+	path = 2015/aoc_4a/external/MD5
+	url = https://github.com/CommanderBubble/MD5.git
