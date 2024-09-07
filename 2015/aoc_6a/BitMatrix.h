@@ -8,8 +8,6 @@
 #include <vector>
 #include <bitset>
 
-#include <iostream>
-
 class BitMatrix
 {
 private:
