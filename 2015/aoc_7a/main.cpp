@@ -15,8 +15,6 @@ int main()
     utils::CheckFileError(file);
     const std::string input {utils::ReadFile(file)};
 
-    std::string test {"123 -> x\n456 -> y\nx AND y -> d\nx OR y -> e\nx LSHIFT 2 -> f\ny RSHIFT 2 -> g\nNOT x -> h\nNOT y -> i"};
-
     bitwise::StringIntMap circuit {aoc7a::parseWires(input)};
     std::cout << "The signal for wire a is: " << circuit["a"] << '\n';
 
