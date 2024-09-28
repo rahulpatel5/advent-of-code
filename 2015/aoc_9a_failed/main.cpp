@@ -1,0 +1,28 @@
+#include "aoc9a.h"
+#include "../../shared/StringUtils.h"
+#include "input.h"
+#include <chrono>
+#include <iostream>
+#include <array>
+
+int main()
+{
+    auto startTime {std::chrono::high_resolution_clock::now()};
+    
+    constexpr std::string_view input {input::input};
+    constexpr std::size_t length {StringUtils::length(input)};
+    constexpr auto lines {StringUtils::split<length>(input)};
+
+    constexpr std::string_view test {"London to Dublin = 464\nLondon to Belfast = 518\nDublin to Belfast = 141\n"};
+    constexpr std::size_t testLength {StringUtils::length(test)};
+    constexpr auto testLines {StringUtils::split<testLength>(test)};
+    
+    int route {aoc9a::getShortestRoute(lines)};
+    std::cout << "The distance of the shortest route is: " << route << '\n';
+    
+    auto stopTime {std::chrono::high_resolution_clock::now()};
+    const std::chrono::duration<double> durationSeconds {stopTime - startTime};
+    std::cout << "Time taken: " << durationSeconds.count() << " s\n";
+    
+    return 0;
+}
