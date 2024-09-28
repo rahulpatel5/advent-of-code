@@ -121,14 +121,6 @@ namespace aoc9a
             {
                 distance += pair.second;
             }
-            if (distance == 271)
-            {
-                std::cout << key.first << ' ' << key.second << '\n';
-                for (const auto& pair : vector)
-                {
-                    std::cout << ' ' << pair.first << ' ' << pair.second << '\n';
-                }
-            }
             // if route is shortest so far, set it as distance
             if (distance < shortest)
                 shortest = distance;
@@ -152,17 +144,6 @@ namespace aoc9a
         // used parsed input to generate routes
         RouteMap routes {createRouteMapKeys(uniqueLocations)};
         populateRoutes(routes, brochure, uniqueLocations);
-
-        for (auto i{0}; i < uniqueLocations.size(); ++i)
-        {
-            auto key {std::make_pair("AlphaCentauri", i)};
-            std::cout << i << '\n';
-            for (const auto& pair : routes.at(key))
-            {
-                std::cout << pair.first << ' ' << pair.second << '\n';
-            }
-            std::cout << '\n';
-        }
 
         return findShortestRoute(routes);
     }
