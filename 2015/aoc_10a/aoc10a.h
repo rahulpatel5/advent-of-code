@@ -2,7 +2,6 @@
 #define AOC10A_H
 
 #include <vector>
-#include <sstream>
 
 namespace aoc10a
 {
@@ -10,7 +9,6 @@ namespace aoc10a
     std::vector<int> readInput(const T& input)
     {
         std::vector<int> output {};
-        // std::istringstream line {std::string(input)};
         for (const auto& digit : input)
         {
             int number {digit - '0'};
