@@ -36,3 +36,7 @@
 
 # External packages
 **/external/
+
+# inputs
+**/input.txt
+**/input.h

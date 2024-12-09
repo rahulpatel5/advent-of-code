@@ -1,4 +1,5 @@
 #include "aoc11a.h"
+#include "input.h"
 #include <chrono>
 #include <iostream>
 #include <string>
@@ -7,7 +8,7 @@ int main()
 {
     auto startTime {std::chrono::high_resolution_clock::now()};
     
-    constexpr std::string_view input {R"(vzbxkghb)"};
+    constexpr std::string_view input {input::input};
     
     constexpr std::string_view testInput1 {R"(abcdefgh)"};
     constexpr std::string_view testInput2 {R"(ghjaabcc)"};

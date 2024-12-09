@@ -1,4 +1,5 @@
 #include "aoc10a.h"
+#include "input.h"
 #include <chrono>
 #include <iostream>
 #include <vector>
@@ -7,7 +8,7 @@ int main()
 {
     auto startTime {std::chrono::high_resolution_clock::now()};
     
-    constexpr std::string_view input {R"(1113222113)"};
+    constexpr std::string_view input {input::input};
     
     constexpr std::string_view testInput {R"(1)"};
     
