@@ -5,7 +5,11 @@
 #include <vector>
 #include <string>
 
-#include <iostream>
+/*
+process string into vector (because integers can go above single digits)
+rearrange vector to move later numbers to fill earlier 'empty' ones
+calculate checksum
+*/
 
 namespace aoc9a
 {
