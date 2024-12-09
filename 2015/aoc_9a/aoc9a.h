@@ -5,12 +5,14 @@
 #include <string>
 #include <vector>
 #include <set>
-#include <unordered_map>
-
-#include <iostream>
+#include <map>
+#include <algorithm>
 
 /*
-
+get unique locations
+use unique locations to set up array with all locations
+use next_permutation to get all routes (note: inefficient as it includes duplicate routes)
+iterate each route and find the shortest
 */
 
 namespace aoc9a
@@ -26,14 +28,74 @@ namespace aoc9a
         }
     };
 
-    using TravelMap = std::unordered_map<std::pair<std::string, std::string>, int, pair_hash>;
+    using TravelMap = std::map<std::pair<std::string, std::string>, int>;
 
     void updateTravelMap(TravelMap& brochure, const std::vector<std::string>& locations)
     {
         brochure[{locations[0], locations[1]}] = std::stoi(locations[2]);
     }
 
-    template <typename T, int numberUniqueLocations>
+    std::set<std::vector<std::string>> setUpAllRoutes(const std::vector<std::string>& locations)
+    {
+        std::set<std::vector<std::string>> routes {};
+        std::vector<std::string> eachLocation {locations};
+        routes.insert(eachLocation);
+
+        while (std::next_permutation(eachLocation.begin(), eachLocation.end()))
+        {
+            routes.insert(eachLocation);
+        }
+
+        return routes;
+    }
+
+    int getJourneyDistance(const std::string& location1, const std::string& location2, const TravelMap& brochure)
+    {
+        std::pair<std::string, std::string> key1 {location1, location2};
+        std::pair<std::string, std::string> key2 {location2, location1};
+        int distance {};
+
+        if (brochure.find(key1) != brochure.end())
+            distance = brochure.at(key1);
+        else if (brochure.find(key2) != brochure.end())
+            distance = brochure.at(key2);
+        else
+            throw std::invalid_argument("Location pair not found.");
+        
+        return distance;
+    }
+
+    int findShortestDistance(const std::set<std::vector<std::string>>& routes, const TravelMap& brochure)
+    {
+        int shortest {};
+        bool firstLoop {true};
+
+        for (const std::vector<std::string>& route : routes)
+        {
+            int distance {};
+            for (size_t i{1}; i < route.size(); ++i)
+            {
+                std::string location1 {route[i - 1]};
+                std::string location2 {route[i]};
+                int locationDistance {getJourneyDistance(location1, location2, brochure)};
+
+                distance += locationDistance;
+                if (!firstLoop && distance >= shortest)
+                    break;
+            }
+            if (firstLoop)
+            {
+                shortest = distance;
+                firstLoop = false;
+            }
+            if (distance < shortest)
+                shortest = distance;
+        }
+
+        return shortest;
+    }
+
+    template <typename T>
     int getShortestRoute(const T& lines)
     {
         TravelMap brochure{};
@@ -47,10 +109,14 @@ namespace aoc9a
             updateTravelMap(brochure, data);
         }
 
-        // used parsed input to generate routes
-        constexpr std::size_t countNonDupeJourneys {parse::countNonRepeatJourneys<std::size_t, numberUniqueLocations>()};
+        // set up array to use with next_permutation
+        std::vector<std::string> eachLocation {};
+        for (const std::string& location : uniqueLocations)
+            eachLocation.push_back(location);
+        
+        std::set<std::vector<std::string>> allRoutes {setUpAllRoutes(eachLocation)};
 
-        return 0; // findShortestRoute(routes);
+        return findShortestDistance(allRoutes, brochure);
     }
 }
 

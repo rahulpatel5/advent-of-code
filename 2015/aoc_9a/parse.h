@@ -14,26 +14,6 @@ namespace parse
         return floorf(n) == n;
     }
 
-    // use template programming to ensure resolution at compile time
-    // need this to create std::array (i.e. to define its fixed size)
-    template <std::size_t length>
-    constexpr int countUniqueLocations()
-    {
-        /*
-        Number of journeys between 2 places is a binomial coefficient
-        i.e. nCr = n! / (r! (n-r)!)
-        We can therefore derive the number of unique locations
-        i.e. we have the binomial coefficient and r = 2, and we want n
-        nCr = n! / (2! (n-2)!) = n(n-1) / 2
-        n**2 - n - 2nCr = 0
-        Use quadratic solution to solve for n (we only want one solution)
-        n = (1 + sqrt(1 + 4 * 2nCr)) / 2
-        */
-        constexpr double n {(1 + sqrt(1 + 8 * length)) / 2};
-        static_assert(numberIsInteger(n) && "Number of unique locations should be an integer but it is not.");
-        return static_cast<int>(n);
-    }
-
     constexpr auto factorial(auto n)
     {
         auto total {1};
@@ -42,18 +22,6 @@ namespace parse
             total *= i;
         }
         return total;
-    }
-
-    template <typename T, auto locations>
-    constexpr T countNonRepeatJourneys()
-    {
-        /*
-        Total number of permutations are N! journeys (as above)
-        However, a reversed journey is a duplicate
-        e.g. A->B->C->D is the same as D->C->B->A
-        Need to divide by 2 to remove duplicates, i.e. N! / 2 journeys
-        */
-        return factorial(locations) / 2;
     }
 
     constexpr std::vector<std::string> readLocationData(std::string_view line)
