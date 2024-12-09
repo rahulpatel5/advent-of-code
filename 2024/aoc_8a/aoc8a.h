@@ -65,25 +65,11 @@ namespace aoc8a
     }
 
     template <std::size_t N>
-    int countValidAntinodes(std::set<std::pair<size_t, size_t>> antinodes, const std::array<std::string_view, N>& lines)
-    {
-        int valid {0};
-
-        for (std::pair<size_t, size_t> antinode : antinodes)
-        {
-            if ((antinode.second >= 0 && antinode.second < lines.size()) && (antinode.first >= 0 && antinode.first < lines.at(0).size()))
-                ++valid;
-        }
-
-        return valid;
-    }
-
-    template <std::size_t N>
     int parseAndCountAntinodes(std::array<std::string_view, N> lines)
     {
         std::set<std::pair<size_t, size_t>> allUniqueAntinodes {findAntinodes<N>(lines)};
 
-        return countValidAntinodes<N>(allUniqueAntinodes, lines);
+        return allUniqueAntinodes.size();
     }
 }
 
