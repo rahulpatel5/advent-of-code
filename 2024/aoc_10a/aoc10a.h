@@ -41,6 +41,7 @@ namespace aoc10a
             // check south
             if (isValidPosition(position.second + 1, position.first, lines, height))
                 newPositions.insert({position.first, position.second + 1});
+            // check west
             if (isValidPosition(position.second, position.first - 1, lines, height))
                 newPositions.insert({position.first - 1, position.second});
         }
