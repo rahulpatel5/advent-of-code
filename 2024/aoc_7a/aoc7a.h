@@ -77,13 +77,14 @@ namespace aoc7a
     }
 
     template <std::size_t N>
-    std::vector<size_t> findTestPasses(std::array<long long, N> testValues, std::array<std::vector<int>, N> numbers)
+    std::vector<long long> findTestPasses(std::array<long long, N> testValues, std::array<std::vector<int>, N> numbers)
     {
-        std::vector<size_t> successes {};
+        std::vector<long long> successes {};
 
         for (size_t i{0}; i < testValues.size(); ++i)
         {
             std::vector<std::vector<char>> permutations {permutation::generate(numbers.at(i))};
+
             if (performCalculation(testValues.at(i), numbers.at(i), permutations))
                 successes.push_back(testValues.at(i));
         }
@@ -91,10 +92,10 @@ namespace aoc7a
         return successes;
     }
 
-    int sumSuccesses(std::vector<size_t> successes)
+    long long sumSuccesses(std::vector<long long> successes)
     {
-        int sum {0};
-        for (size_t success : successes)
+        long long sum {0};
+        for (long long success : successes)
         {
             sum += success;
         }
@@ -102,12 +103,12 @@ namespace aoc7a
     }
 
     template <std::size_t N>
-    int parseAndCountTests(std::array<std::string_view, N> lines)
+    long long parseAndCountTests(std::array<std::string_view, N> lines)
     {
         std::array<long long, N> testValues {getTestValues<N>(lines)};
         std::array<std::vector<int>, N> numbers {getNumbers<N>(lines)};
 
-        std::vector<size_t> successTests {findTestPasses<N>(testValues, numbers)};
+        std::vector<long long> successTests {findTestPasses<N>(testValues, numbers)};
 
         return sumSuccesses(successTests);
     }
