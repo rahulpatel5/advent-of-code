@@ -11,10 +11,32 @@
 parse input and add to a vector
 iterate vector 25 times, applying rules to each element for each iteration
 count size of vector at the end
+
 CHANGE:
     above approach doesn't work due to vectors getting too long with numbers that are too large (bigger than long long allows)
     size of vector (i.e. number of stones) seems to increase by about 50% for successive iterations. May be able to look for a pattern there?
-    [new approach]
+
+    there will be patterns in numbers, e.g. 0 (below)
+    would it make sense to use dynamic programming & memoisation?
+
+    but isn't issue the large numbers? How to handle those
+    why do they get arbitrarily large? Because they have an odd number of digits
+    is there a way to understand what number of digits result from a product, without calculating it?
+    if so, can we just store the number of times we multiply by 2,024 rather than calculating the product?
+    scientific notation could work in theory, but we need to know the numbers precisely and floating point precision could cause issues
+
+EXAMPLE PATTERN:
+    0 -> 1 -> 2024 -> (20, 24) -> (2, 0, 2, 4) -> (4048, 1, 4048, 8096) ...
+
+DIGIT SIZE:
+    1 * 999 -> [3]
+    1 * 1000 -> [4]
+    9 * 1000 -> [4]
+    9 * 1112 -> [5]
+    49 * 986 -> [5]
+    48 * 1062 -> [5]
+    95 * 1062 -> [6]
+
 */
 
 namespace aoc11a
@@ -71,8 +93,8 @@ namespace aoc11a
         std::vector<long long> blinkStones {stones};
         for (int i{0}; i < blinks; ++i)
         {
-            // std::cout << "iteration: " << i << '\n';
-            // std::cout << blinkStones.size() << '\n';
+            std::cout << "iteration: " << i << '\n';
+            std::cout << blinkStones.size() << '\n';
             blinkStones = applyBlinkRules(blinkStones);
         }
         return blinkStones;
