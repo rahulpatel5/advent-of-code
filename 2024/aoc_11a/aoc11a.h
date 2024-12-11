@@ -18,6 +18,7 @@ CHANGE:
 
     there will be patterns in numbers, e.g. 0 (below)
     would it make sense to use dynamic programming & memoisation?
+    can memoisation work when there are 3 rules to apply?
 
     but isn't issue the large numbers? How to handle those
     why do they get arbitrarily large? Because they have an odd number of digits
@@ -29,14 +30,19 @@ EXAMPLE PATTERN:
     0 -> 1 -> 2024 -> (20, 24) -> (2, 0, 2, 4) -> (4048, 1, 4048, 8096) ...
 
 DIGIT SIZE:
-    1 * 999 -> [3]
-    1 * 1000 -> [4]
-    9 * 1000 -> [4]
-    9 * 1112 -> [5]
-    49 * 986 -> [5]
-    48 * 1062 -> [5]
-    95 * 1062 -> [6]
-
+    1 * 2024 -> [4]
+    9 * 2024 -> [5]
+    49 * 2024 -> [5]
+    50 * 2024 -> [6]
+    480 * 2024 -> [6]
+    499 * 2024 -> [7]
+    
+    can we use any significance with 2,024?
+    10,000 / 2,024 ~= 4.940711
+    if n * 2,024
+        where n < 4.94... * 10^a, the number of digits in the product would be (4 + a)
+        where n >= 4.94... * 10^a, the number of digits would be (4 + a + 1)
+        alternatively, we can say d = number of digits in other number. Then we have (4 + d - 1) for < 4.94, and otherwise (4 + d)
 */
 
 namespace aoc11a
