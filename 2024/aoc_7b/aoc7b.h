@@ -8,13 +8,11 @@
 #include <vector>
 #include <string>
 
-#include <iostream>
-
 /*
 re-use aoc7a solution to count how many pass using * and +
 iterate through remaining unsolved solutions
 add permutations including one || operator (note: might be more than one operator?)
-(use '|' instead, to keep operators as char)
+use '(' instead, 1) to keep operators as char and 2) as permutations rely on having ASCII codes in ascending order ('(' is before + and *)
 iterate through unsolved equations with new permutations
 count how many pass, in addition to previous
 */
@@ -139,12 +137,12 @@ namespace aoc7b
                 if (i == 0)
                     solution = numbers.at(i);
                 
-                if (permutation.at(i) == '|')
+                if (permutation.at(i) == '(')
                     solution = concatenateNumbers(solution, numbers.at(i + 1));
                 else if (permutation.at(i) == '+')
-                        solution += numbers.at(i + 1);
+                    solution += numbers.at(i + 1);
                 else if (permutation.at(i) == '*')
-                        solution *= numbers.at(i + 1);
+                    solution *= numbers.at(i + 1);
             }
             if (solution == testValue)
                 return true;
@@ -162,15 +160,6 @@ namespace aoc7b
         for (size_t unsolvedIndex : unsolvedOnlyIndices)
         {
             std::vector<std::vector<char>> permutations {permutation_7b::generateWithConcat(numbers.at(unsolvedIndex))};
-            std::cout << testValues.at(unsolvedIndex) << '\n';
-            for (auto perm : permutations)
-            {
-                for (auto p : perm)
-                {
-                    std::cout << p << ' ';
-                }
-                std::cout << '\n';
-            }
 
             if (performConcatCalculation(testValues.at(unsolvedIndex), numbers.at(unsolvedIndex), permutations))
                 successes.push_back(unsolvedIndex);

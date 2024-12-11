@@ -25,7 +25,7 @@ int main()
     constexpr std::size_t testLength {StringUtils::length(testInput)};
     constexpr std::array<std::string_view, testLength> testLines {StringUtils::split<testLength>(testInput)};
     
-    long long sum {aoc7b::parseAndCountTests<testLength>(testLines)};
+    long long sum {aoc7b::parseAndCountTests<length>(lines)};
     std::cout << "total calibration result: " << sum << '\n';
     
     auto stopTime {std::chrono::high_resolution_clock::now()};
