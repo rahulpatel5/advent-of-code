@@ -4,8 +4,8 @@
 #include <string_view>
 #include <vector>
 #include <string>
-
-#include <iostream>
+#include <map>
+#include <cmath>
 
 /*
 parse input and add to a vector
@@ -43,7 +43,21 @@ DIGIT SIZE:
         where n < 4.94... * 10^a, the number of digits in the product would be (4 + a)
         where n >= 4.94... * 10^a, the number of digits would be (4 + a + 1)
         alternatively, we can say d = number of digits in other number. Then we have (4 + d - 1) for < 4.94, and otherwise (4 + d)
+
+        if we have the digit in scientific notation e.g. 4.99 * 10^2
+        then we may be able to look at this portion of the calculation
+        i.e. we can do 4.99 * 2024 to get 9.99856 * 10^3
+        we then have the exponent as 2 + 3 = 5, i.e. odd number of digits
+
 */
+
+namespace constants
+{
+    constexpr int BLINKS {25};
+    constexpr int MULTIPLIER {2024};
+    constexpr double doubleMULTIPLIER {2024.0};
+    constexpr double MANTISSA {10000.0 / MULTIPLIER};
+}
 
 namespace aoc11a
 {
@@ -62,54 +76,92 @@ namespace aoc11a
         return stones;
     }
 
-    bool isEvenNumberOfDigits(int num)
+    bool isEvenNumberOfDigits(long long num)
     {
         std::string digit {std::to_string(num)};
         return digit.size() % 2 == 0;
     }
 
-    void splitAndAddStones(std::vector<long long>& stones, long long stone)
+    std::vector<long long> splitAndAddStones(const std::vector<long long>& stones, long long stone)
     {
         std::string originalStone {std::to_string(stone)};
         size_t splitPoint {originalStone.size() / 2};
         std::string leftStone {originalStone.substr(0, splitPoint)};
-        stones.push_back(std::stoll(leftStone));
         std::string rightStone {originalStone.substr(splitPoint)};
-        stones.push_back(std::stoll(rightStone));
+        return {std::stoll(leftStone), std::stoll(rightStone)};
     }
 
-    std::vector<long long> applyBlinkRules(const std::vector<long long>& stones)
+    bool willStayOddNumberOfDigits(long long num, int iteration)
+    {
+        int exponent {(int)std::floor(std::log10(num))};
+        double significand {(double)num * std::pow(10, -exponent)};
+        for (int i{iteration}; i < constants::BLINKS; ++i)
+        {
+            significand *= constants::doubleMULTIPLIER;
+            int exp {(int)std::floor(std::log10(significand))};
+            significand *= std::pow(10, -exp);
+            exponent += exp;
+            // an even numbered exponent means an odd number of digits
+            // account for this when identifying odd number of digits
+            if ((exponent + 1) % 2 == 0)
+                return false;
+        }
+        return true;
+    }
+
+    std::vector<long long> applyBlinkRules(std::vector<long long>& stones, std::map<long long, std::vector<long long>>& memo, int iteration)
     {
         std::vector<long long> blinkStones {};
-        constexpr int multiplier {2024};
         for (size_t i{0}; i < stones.size(); ++i)
         {
-            if (stones[i] == 0)
-                blinkStones.push_back(1);
+            if (memo.count(stones[i]) > 0)
+            {
+                for (long long value : memo[stones[i]])
+                    blinkStones.push_back(value);
+            }
+
             else if (isEvenNumberOfDigits(stones[i]))
-                splitAndAddStones(blinkStones, stones[i]);
+            {
+                std::vector<long long> split {splitAndAddStones(stones, stones[i])};
+                memo[stones[i]] = split;
+                for (long long value : split)
+                    blinkStones.push_back(value);
+            }
             else
-                blinkStones.push_back(stones[i] * multiplier);
+            {
+                if (willStayOddNumberOfDigits(stones[i], iteration))
+                {
+                    // this may update the map (memo) value
+                    // this is intended, as a number may not reach a point
+                    // where splitting is possible after enough iterations
+                    memo[stones[i]] = {stones[i]};
+                    blinkStones.push_back(stones[i]);
+                }
+                else
+                {
+                    memo[stones[i]] = {stones[i] * constants::MULTIPLIER};
+                    blinkStones.push_back(stones[i] * constants::MULTIPLIER);
+                }
+            }
         }
         return blinkStones;
     }
 
-    std::vector<long long> blinkForNewStones(const std::vector<long long>& stones, int blinks)
+    std::vector<long long> blinkForNewStones(const std::vector<long long>& stones)
     {
         std::vector<long long> blinkStones {stones};
-        for (int i{0}; i < blinks; ++i)
-        {
-            std::cout << "iteration: " << i << '\n';
-            std::cout << blinkStones.size() << '\n';
-            blinkStones = applyBlinkRules(blinkStones);
-        }
+        // using memoisation to store previous values;
+        std::map<long long, std::vector<long long>> memo {};
+        memo[0] = {1};
+        for (int i{0}; i < constants::BLINKS; ++i)
+            blinkStones = applyBlinkRules(blinkStones, memo, i);
         return blinkStones;
     }
 
-    int parseAndCountStones(std::string_view input, int blinks)
+    int parseAndCountStones(std::string_view input)
     {
         std::vector<long long> startStones {getInitialStones(input)};
-        std::vector<long long> finalStones {blinkForNewStones(startStones, blinks)};
+        std::vector<long long> finalStones {blinkForNewStones(startStones)};
 
         return finalStones.size();
     }

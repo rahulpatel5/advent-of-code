@@ -9,9 +9,8 @@ int main()
     
     constexpr std::string_view input {input::input};
     constexpr std::string_view testInput {"125 17"};
-    constexpr int blinks {25};
     
-    int stones {aoc11a::parseAndCountStones(input, blinks)};
+    int stones {aoc11a::parseAndCountStones(input)};
     std::cout << "number of stones: " << stones << '\n';
     
     auto stopTime {std::chrono::high_resolution_clock::now()};
