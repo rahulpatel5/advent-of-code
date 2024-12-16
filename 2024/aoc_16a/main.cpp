@@ -12,26 +12,28 @@ int main()
     constexpr std::size_t length {StringUtils::length(input)};
     constexpr std::array<std::string_view, length> lines {StringUtils::split<length>(input)};
     
-    constexpr std::string_view testInput {R"(###############
-#.......#....E#
-#.#.###.#.###.#
-#.....#.#...#.#
-#.###.#####.#.#
-#.#.#.......#.#
-#.#.#####.###.#
-#...........#.#
-###.#.#####.#.#
-#...#.....#.#.#
-#.#.#.###.#.#.#
-#.....#...#.#.#
-#.###.#.#.#.#.#
-#S..#.....#...#
-###############
+    constexpr std::string_view testInput {R"(#################
+#...#...#...#..E#
+#.#.#.#.#.#.#.#.#
+#.#.#.#...#...#.#
+#.#.#.#.###.#.#.#
+#...#.#.#.....#.#
+#.#.#.#.#.#####.#
+#.#...#.#.#.....#
+#.#.#####.#.###.#
+#.#.#.......#...#
+#.#.###.#####.###
+#.#.#...#.....#.#
+#.#.#.#####.###.#
+#.#.#.........#.#
+#.#.#.#########.#
+#S#.............#
+#################
 )"};
     constexpr std::size_t testLength {StringUtils::length(testInput)};
     constexpr std::array<std::string_view, testLength> testLines {StringUtils::split<testLength>(testInput)};
     
-    int score {aoc16a::parseAndGetScore<testLength>(testLines)};
+    int score {aoc16a::parseAndGetScore<length>(lines)};
     std::cout << "score: " << score << '\n';
     
     auto stopTime {std::chrono::high_resolution_clock::now()};
