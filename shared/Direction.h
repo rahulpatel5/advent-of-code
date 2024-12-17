@@ -10,6 +10,8 @@ namespace Direction
     constexpr std::pair<int, int> east  { 1,  0};
     constexpr std::pair<int, int> south { 0,  1};
     constexpr std::pair<int, int> west  {-1,  0};
+
+    constexpr std::array<std::pair<int, int>, 4> allDirections {north, east, south, west};
     
     constexpr std::pair<int, int> turnClockwise(std::pair<int, int> move)
     {

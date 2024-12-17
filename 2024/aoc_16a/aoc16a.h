@@ -100,6 +100,18 @@ namespace aoc16a
         return false;
     }
 
+    template <std::size_t N>
+    bool hasOnlyOnePath(Position pos, const std::array<std::string_view, N>& lines)
+    {
+        int count {0};
+        for (Move move : Direction::allDirections)
+        {
+            if (goFreeSpace({pos.first + move.first, pos.second + move.second}, lines))
+                ++count;
+        }
+        return count <= 2;
+    }
+
     int getLowestScore(const Scores& scores)
     {
         int lowest {0};
@@ -151,7 +163,8 @@ namespace aoc16a
                 {
                     positions[i] = forward;
                     ++scores[i];
-                    treadOldGround.insert(forward);
+                    if (hasOnlyOnePath(forward, lines))
+                        treadOldGround.insert(forward);
                 }
                 // if new position is exit, then path is done
                 else if (reachExit(forward, lines))
@@ -178,7 +191,8 @@ namespace aoc16a
                         movements.push_back(otherMove);
                         // add 1,000 for turn and 1 for move
                         scores.push_back(currentScore + 1001);
-                        treadOldGround.insert(nextSpace);
+                        if (hasOnlyOnePath(nextSpace, lines))
+                            treadOldGround.insert(nextSpace);
                     }
                     // if at exit, add 1,000 for turn and 1 for move
                     else if (reachExit(nextSpace, lines))
