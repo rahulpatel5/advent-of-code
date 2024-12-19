@@ -1,7 +1,7 @@
 # advent-of-code
 Attempted solutions to Advent of Code challenges in C++.
 
-Time taken for each solution, to the nearest 0.001s if under 1 second or otherwise to the nearest 0.1s:
+Time taken (runtime) for each solution, to the nearest 0.001s if under 1 second:
 
 ## **2015**
 
@@ -33,3 +33,11 @@ Time taken for each solution, to the nearest 0.001s if under 1 second or otherwi
 | 8     | 0.004s   | 0.004s   |
 | 9     | 2.8s     | 0.467s   |
 | 10    | 0.001s   | 0.007s   |
+| 11    | 0.112s   |          |
+| 12    | 0.150s   |          |
+| 13    | 0.059s   |          |
+| 14    | 0.002s   | 10.3s    |
+| 15    | 0.002s   | 0.007s   |
+| 16    |          |          |
+| 17    | 0.000s   |          |
+| 18    | 0.008s   | 0.029s   |
