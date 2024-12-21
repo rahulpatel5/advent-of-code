@@ -182,7 +182,6 @@ namespace aoc20a
                 {
                     if ((shortestNonCheatPath.size() - 1) >= (steps + 2) + Ttarget)
                         ++count;
-                    // std::cout << '\t' << (84 - (steps + 2)) << '\n';
                     continue;
                 }
                 uniqueStartEnd.insert({oldPathPos, newStart});
