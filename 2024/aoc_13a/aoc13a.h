@@ -76,17 +76,6 @@ namespace aoc13a
         return (maxXLoops < maxYLoops) ? maxXLoops : maxYLoops;
     }
 
-    bool isWinningCombination(std::pair<int, int> Abutton, int Apresses, std::pair<int, int> Bbutton, int Bpresses, std::pair<int, int> prize)
-    {
-        int x {0};
-        int y {0};
-        while (x < prize.first && y < prize.second)
-        {
-            //
-        }
-        return false;
-    }
-
     std::pair<int, int> getPresses(std::pair<int, int> Abutton, int Apresses, std::pair<int, int> Bbutton, int Bpresses, std::pair<int, int> prize)
     {
         // guard clauses
