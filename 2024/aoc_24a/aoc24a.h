@@ -61,7 +61,6 @@ namespace aoc24a
         }
     }
 
-    // first pass at function, before adding more complexity
     GateInt performOperation(const Gate& gate, const WireMap& wires)
     {
         if (gate.at(0) == "AND")
