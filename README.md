@@ -33,7 +33,7 @@ Time taken (runtime) for each solution, to the nearest 0.001s if under 1 second:
 | 8     | 0.004s   | 0.004s   |
 | 9     | 2.8s     | 0.467s   |
 | 10    | 0.001s   | 0.007s   |
-| 11    | 0.112s   |          |
+| 11    | 0.112s   | 1,755.1s |
 | 12    | 0.150s   |          |
 | 13    | 0.059s   |          |
 | 14    | 0.002s   | 10.3s    |
@@ -41,3 +41,10 @@ Time taken (runtime) for each solution, to the nearest 0.001s if under 1 second:
 | 16    |          |          |
 | 17    | 0.000s   |          |
 | 18    | 0.008s   | 0.029s   |
+| 19    |          |          |
+| 20    | 197.0s   |          |
+| 21    |          |          |
+| 22    | 0.049s   |          |
+| 23    | 278.7s   |          |
+| 24    | 0.003s   |          |
+| 25    | 0.004s   |          |
