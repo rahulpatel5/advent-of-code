@@ -7,6 +7,7 @@
 #include <vector>
 #include <set>
 #include <cassert>
+#include <algorithm>
 
 #include <iostream>
 
@@ -15,6 +16,15 @@ iterate each possible path, with +1000 score for turn and +1 for moving
 collect lowest score
 where a path exceeds the lowest score, or reaches a dead end, stop the path
 return the lowest score
+
+traversing the maze seems to be failing
+another option is to revise the map
+find all dead-ends and fill them in, back up to a cross-roads
+i.e. find all free spaces surrounded by three hashes and make those a hash
+this reduces wasted time traversing dead ends
+it might make it more reasonable to traverse all paths?
+the current issue may be that there is a winding path getting dropped
+when it would end up being the shortest
 */
 
 namespace aoc16a
@@ -33,6 +43,8 @@ namespace aoc16a
     {
         for (size_t y{0}; y < map.size(); ++y)
         {
+            if (map[y].find('S') == std::string_view::npos)
+                continue;
             for (size_t x{0}; x < map[y].size(); ++x)
             {
                 if (map[y][x] == 'S')
@@ -60,7 +72,7 @@ namespace aoc16a
     }
 
     template <std::size_t N>
-    bool goFreeSpace(Position pos, const std::array<std::string_view, N> map)
+    bool isFree(Position pos, const std::array<std::string_view, N> map)
     {
         return map[pos.second][pos.first] == '.';
     }
@@ -72,12 +84,12 @@ namespace aoc16a
         // check clockwise
         Move clockMove {Direction::turnClockwise(move)};
         Position clockPos {goInDirection(pos, clockMove)};
-        if (goFreeSpace(clockPos, map) || reachExit(clockPos, map))
+        if (isFree(clockPos, map) || reachExit(clockPos, map))
             next.push_back(clockMove);
         //check anti-clockwise
         Move antiClockMove {Direction::turnAntiClockwise(move)};
         Position antiClockPos {goInDirection(pos, antiClockMove)};
-        if (goFreeSpace(antiClockPos, map) || reachExit(antiClockPos, map))
+        if (isFree(antiClockPos, map) || reachExit(antiClockPos, map))
             next.push_back(antiClockMove);
 
         return next;
@@ -92,12 +104,7 @@ namespace aoc16a
 
     bool isPositionAlreadyReached(Position pos, const UniquePositions& uniquePositions)
     {
-        for (Position uniquePosition : uniquePositions)
-        {
-            if (uniquePosition == pos)
-                return true;
-        }
-        return false;
+        return uniquePositions.count(pos) > 0;
     }
 
     template <std::size_t N>
@@ -106,10 +113,25 @@ namespace aoc16a
         int count {0};
         for (Move move : Direction::allDirections)
         {
-            if (goFreeSpace({pos.first + move.first, pos.second + move.second}, lines))
+            if (isFree({pos.first + move.first, pos.second + move.second}, lines))
                 ++count;
         }
         return count <= 2;
+    }
+
+    bool isLowScore(const Scores& scores, int score)
+    {
+        // add tolerance to account for some possible situations
+        // int tolerance {5'500};
+        for (size_t i{0}; i < scores.size(); ++i)
+        {
+            // no idea what this nonValidPaths bit was for
+            // if (scores[i] + tolerance < score && std::find(nonValidPaths.begin(), nonValidPaths.end(), i) != nonValidPaths.end())
+            // if (scores[i] + tolerance < score)
+            if (scores[i] < score)
+                return false;
+        }
+        return true;
     }
 
     int getLowestScore(const Scores& scores)
@@ -141,26 +163,45 @@ namespace aoc16a
         uniquePos.insert(start);
 
         Scores finalScores {};
+        // can improve efficiency by tracking the lowest final score
+        // and dropping paths that are higher than this
+        int lowestFinalScore {};
         bool noPathsLeft {false};
+        int count {1};
         while (!noPathsLeft)
         {
+            // std::cout << '\t' << positions.size() << '\n';
             std::vector<size_t> nonValidPaths {};
             UniquePositions treadOldGround {};
             assert((positions.size() == movements.size() && movements.size() == scores.size()) && "Info on the number of paths is inconsistent (position, move, score).\n");
+            Positions positionsToAdd {};
+            Moves movesToAdd {};
+            Scores scoresToAdd {};
+            // std::cout << "loop " << count << '\n';
             for (size_t i{0}; i < positions.size(); ++i)
             {
+                // std::cout << "iter " << i << ' ' << positions.size() << ' ' << positions[i].first << ' ' << positions[i].second << '\n';
                 Position currentPos {positions[i]};
                 Move currentMove {movements[i]};
                 int currentScore {scores[i]};
                 // first traverse the current direction
                 Position forward {goInDirection(positions[i], movements[i])};
+                // if path has higher score than current lowest
+                // then there's no point continuing. End early for more speed
+                if (lowestFinalScore > 0 && scores[i] >= lowestFinalScore)
+                {
+                    nonValidPaths.push_back(i);
+                    continue;
+                }
                 // check that position wasn't reached already
                 // i.e. avoid loops, or paths that are longer than needed
-                if (isPositionAlreadyReached(forward, uniquePos) && !reachExit(forward, lines))
+                // UNLESS path has the lowest score
+                if (isPositionAlreadyReached(forward, uniquePos) && !reachExit(forward, lines) && !isLowScore(scores, scores[i]))
                     nonValidPaths.push_back(i);
                 // otherwise path is valid
-                else if (goFreeSpace(forward, lines))
+                else if (isFree(forward, lines))
                 {
+                    // std::cout << '\t' << i << '\n';
                     positions[i] = forward;
                     ++scores[i];
                     if (hasOnlyOnePath(forward, lines))
@@ -169,7 +210,10 @@ namespace aoc16a
                 // if new position is exit, then path is done
                 else if (reachExit(forward, lines))
                 {
-                    finalScores.push_back(++scores[i]);
+                    finalScores.push_back(scores[i] + 1);
+                    if (lowestFinalScore == 0 || scores[i] + 1 < lowestFinalScore)
+                        lowestFinalScore = scores[i] + 1;
+                    std::cout << "a/ got " << scores[i] + 1 << " on " << count << '\n';
                     nonValidPaths.push_back(i);
                 }
                 // if hit wall, then current path is done
@@ -182,33 +226,67 @@ namespace aoc16a
                 {
                     Position nextSpace {goInDirection(currentPos, otherMove)};
                     // check that position was not reached before
-                    if (isPositionAlreadyReached(nextSpace, uniquePos))
+                    if (isPositionAlreadyReached(nextSpace, uniquePos) && !reachExit(nextSpace, lines) && !isLowScore(scores, currentScore))
                         continue;
                     // if path valid, then add as a new path
-                    else if (goFreeSpace(nextSpace, lines))
+                    else if (isFree(nextSpace, lines))
                     {
-                        positions.push_back(nextSpace);
-                        movements.push_back(otherMove);
+                        // need to add these to temporary objects and add later
+                        // as otherwise we could add extra loops in the for loop
+                        positionsToAdd.push_back(nextSpace);
+                        movesToAdd.push_back(otherMove);
                         // add 1,000 for turn and 1 for move
-                        scores.push_back(currentScore + 1001);
+                        scoresToAdd.push_back(currentScore + 1001);
                         if (hasOnlyOnePath(nextSpace, lines))
                             treadOldGround.insert(nextSpace);
                     }
                     // if at exit, add 1,000 for turn and 1 for move
                     else if (reachExit(nextSpace, lines))
+                    {
                         finalScores.push_back(currentScore + 1001);
+                        if (lowestFinalScore == 0 || currentScore + 1001 < lowestFinalScore)
+                            lowestFinalScore = currentScore + 1001;
+                        std::cout << "b/ got " << currentScore + 1001 << " on " << count << '\n';
+                    }
                 }
+                // std::cout << "reach end\n";
             }
 
-            // this currently makes the code run longer without seeming to change the output
-            // but this does seem to be a more reliable approach (adding new positions after the loop, to avoid dropping a path that may have ended up being shortest)
             for (Position pos : treadOldGround)
                 uniquePos.insert(pos);
+            for (size_t j{0}; j < positionsToAdd.size(); ++j)
+            {
+                positions.push_back(positionsToAdd[j]);
+                movements.push_back(movesToAdd[j]);
+                scores.push_back(scoresToAdd[j]);
+            }
             // clean up by removing non-valid paths
             // go in reverse order to delete the right paths
             for (int j{static_cast<int>(nonValidPaths.size() - 1)}; j >= 0; --j)
                 deleteNonValidPaths(positions, movements, scores, nonValidPaths[j]);
             
+            if (count == 431)
+            {
+                for (size_t y{0}; y < lines.size(); ++y)
+                {
+                    for (size_t x{0}; x < lines[y].size(); ++x)
+                    {
+                        if (uniquePos.find({x, y}) != uniquePos.end())
+                            std::cout << '@';
+                        else
+                            std::cout << lines[y][x];
+                    }
+                    std::cout << '\n';
+                }
+
+                for (int score : finalScores)
+                {
+                    std::cout << score << ' ';
+                }
+                std::cout << '\n';
+            }
+            ++count;
+
             if (positions.size() == 0)
                 noPathsLeft = true;
         }
