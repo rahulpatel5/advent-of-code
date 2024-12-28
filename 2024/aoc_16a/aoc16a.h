@@ -10,8 +10,6 @@
 #include <algorithm>
 #include <map>
 
-#include <iostream>
-
 /*
 iterate each possible path, with +1000 score for turn and +1 for moving
 collect lowest score
