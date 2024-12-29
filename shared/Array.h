@@ -9,7 +9,7 @@
 namespace Array
 {
     template <typename T, std::size_t Row, std::size_t Col>
-    using Array2d = std::array<std::array<T, Col, Row>;
+    using Array2d = std::array<std::array<T, Col>, Row>;
 
     template <typename T, std::size_t Row, std::size_t Col>
     constexpr std::size_t rowLength(const Array2d<T, Row, Col>& arr)
