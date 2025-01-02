@@ -128,7 +128,6 @@ namespace aoc19a
     int countPossibleDesigns(const Designs& designs, Towels& towels, TowelSizes& towelSizesMinMax)
     {
         int success {0};
-        int iter {0};
         for (const Design& design : designs)
         {
             if (isDesignPossible(design, towels, towelSizesMinMax))
