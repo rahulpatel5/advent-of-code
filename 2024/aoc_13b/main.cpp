@@ -34,7 +34,7 @@ Prize: X=18641, Y=10279
     constexpr int Atoken {3}; // number of tokens to press A button
     constexpr int Btoken {1}; // number of tokens to press B button
     
-    aoc13b::TokenInt tokens {aoc13b::parseAndGetFewestTokensToWin<testLength, Atoken, Btoken>(testLines)};
+    aoc13b::TokenInt tokens {aoc13b::parseAndGetFewestTokensToWin<length, Atoken, Btoken>(lines)};
     std::cout << "fewest tokens to win the winnable prizes: " << tokens << '\n';
     
     auto stopTime {std::chrono::high_resolution_clock::now()};
