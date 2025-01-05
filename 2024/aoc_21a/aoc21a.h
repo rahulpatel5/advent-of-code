@@ -87,11 +87,9 @@ namespace aoc21a
 {
     using CodeInt = long long;
     using Move = std::pair<int, int>;
-    using Moves = std::vector<Move>;
     using Press = char;
     using Presses = std::string;
     using PressList = std::vector<Presses>;
-    using PressSequence = std::vector<char>;
     using Movement = std::pair<Move, int>;
 
     Move getDirection(char c)
