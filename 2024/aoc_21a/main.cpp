@@ -21,7 +21,7 @@ int main()
     constexpr std::size_t testLength {StringUtils::length(testInput)};
     constexpr std::array<std::string_view, testLength> testLines {StringUtils::split<testLength>(testInput)};
     
-    aoc21a::CodeInt complexity {aoc21a::parseAndGetCodeComplexity<testLength>(testLines)};
+    aoc21a::CodeInt complexity {aoc21a::parseAndGetCodeComplexity<length>(lines)};
     std::cout << "sum of complexities: " << complexity << '\n';
     
     auto stopTime {std::chrono::high_resolution_clock::now()};

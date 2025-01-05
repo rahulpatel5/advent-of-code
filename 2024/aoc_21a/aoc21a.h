@@ -9,8 +9,7 @@
 #include "../../shared/Array.h"
 #include <map>
 #include <stdexcept>
-
-#include <iostream>
+#include <algorithm>
 
 /*
 read codes
@@ -143,86 +142,126 @@ namespace aoc21a
             return {{0, 0}, 0};
     }
 
-    bool isHorizontalFaster(const Movement& horizontal, const Movement& vertical, Button start)
-    {
-        // if not moving horizontally or vertically, it doesn't matter
-        if (horizontal.second == 0 || vertical.second == 0)
-            return true;
-        int xDistance {horizontal.first.first * horizontal.first.first * horizontal.second};
-        int yDistance {vertical.first.second * vertical.first.second * vertical.second};
-        return xDistance < yDistance;
-    }
-
-    void addToSequence(PressSequence& presses, const Movement& movement)
+    void addSequence(Presses& presses, const Movement& movement)
     {
         for (int n{0}; n < movement.second; ++n)
             presses.push_back(getArrow(movement.first));
     }
 
-    PressSequence getNumericalPresses(Button start, Button end, bool preferHorizontal)
+    PressList getNumericalPresses(Button start, Button end)
     {
-        PressSequence presses {};
-        Movement horizontal {getHorizontalMove(start, end)};
-        Movement vertical {getVerticalMove(start, end)};
+        Movement horizontalMove {getHorizontalMove(start, end)};
+        Movement verticalMove {getVerticalMove(start, end)};
+
+        Presses presses {};
+        addSequence(presses, horizontalMove);
+        addSequence(presses, verticalMove);
+
+        // generate iterations for the combined sequence
+        PressList sequences {};
+        sequences.push_back(presses);
+        while (std::next_permutation(presses.begin(), presses.end()))
+        {
+            sequences.push_back(presses);
+        }
+
         // we need to avoid the empty button space
-        if (start.first == 0 && end.second == Numeric::keypad.size() - 1)
+        if ((start.first == 0 && end.second == Numeric::keypad.size() - 1) || (start.second == Numeric::keypad.size() - 1 && end.first == 0))
         {
-            addToSequence(presses, horizontal);
-            addToSequence(presses, vertical);
+            Presses beginSeq;
+            // if going left to down right
+            if (start.first == 0)
+            {
+                if (start.second == 0)
+                    beginSeq = "vvv";
+                else if (start.second == 1)
+                    beginSeq = "vv";
+                else if (start.second == 2)
+                    beginSeq = "v";
+            }
+            // if going down right to up left
+            else if (end.first == 0)
+            {
+                if (start.first == 1)
+                    beginSeq = "<";
+                else if (start.first == 2)
+                    beginSeq = "<<";
+            }
+
+            auto it {std::find_if(sequences.begin(), sequences.end(), [&beginSeq](const std::string& s) {
+                return s.find(beginSeq) == 0;
+            })};
+            if (it != sequences.end())
+                sequences.erase(it);
         }
-        else if (start.second == Numeric::keypad.size() - 1 && end.first == 0)
-        {
-            addToSequence(presses, vertical);
-            addToSequence(presses, horizontal);
-        }
-        // shortest sequence needs accounting for distance between buttons
-        // else if (isHorizontalFaster(horizontal, vertical, start))
-        else if (preferHorizontal)
-        {
-            addToSequence(presses, horizontal);
-            addToSequence(presses, vertical);
-        }
-        else
-        {
-            addToSequence(presses, vertical);
-            addToSequence(presses, horizontal);
-        }
-        return presses;
+        return sequences;
     }
 
-    PressSequence getVerticalPresses(Button start, Button end)
+    PressList getDirectionalPresses(Button start, Button end)
     {
-        PressSequence presses {};
-        Movement horizontal {getHorizontalMove(start, end)};
-        Movement vertical {getVerticalMove(start, end)};
+        Movement horizontalMove {getHorizontalMove(start, end)};
+        Movement verticalMove {getVerticalMove(start, end)};
+
+        Presses presses {};
+        addSequence(presses, horizontalMove);
+        addSequence(presses, verticalMove);
+
+        // generate iterations for the combined sequence
+        PressList sequences {};
+        sequences.push_back(presses);
+        while (std::next_permutation(presses.begin(), presses.end()))
+        {
+            sequences.push_back(presses);
+        }
+
         // we need to avoid the empty button space
-        if (start.second == 0 && end.first == 0)
+        if ((start.second == 0 && end.first == 0) || (start.first == 0 && end.second == 0))
         {
-            addToSequence(presses, vertical);
-            addToSequence(presses, horizontal);
+            Presses beginSeq;
+            // if going up right to down left
+            if (end.first == 0)
+            {
+                if (start.first == 1)
+                    beginSeq = "<";
+                else if (start.first == 2)
+                    beginSeq = "<<";
+            }
+            // if going down left to up right
+            else if (start.first == 0)
+            {
+                beginSeq = "^";
+            }
+
+            auto it {std::find_if(sequences.begin(), sequences.end(), [&beginSeq](const std::string& s) {
+                return s.find(beginSeq) == 0;
+            })};
+            if (it != sequences.end())
+                sequences.erase(it);
         }
-        else if (start.first == 0 && end.second == 0)
-        {
-            addToSequence(presses, horizontal);
-            addToSequence(presses, vertical);
-        }
-        // shortest sequence needs accounting for distance between buttons
-        else if (isHorizontalFaster(horizontal, vertical, start))
-        {
-            addToSequence(presses, horizontal);
-            addToSequence(presses, vertical);
-        }
-        else
-        {
-            addToSequence(presses, vertical);
-            addToSequence(presses, horizontal);
-        }
-        return presses;
+        return sequences;
     }
 
-    PressSequence getNumericSequence(const Presses& code, bool preferHorizontal)
+    PressList addNewArrows(const PressList& sequences, const PressList& arrows)
     {
-        PressSequence sequence {};
+        if (sequences.size() == 0)
+            return arrows;
+
+        PressList newSequences {};
+        for (const Presses& seq : sequences)
+        {
+            for (const Presses& newArrows : arrows)
+            {
+                Presses combined {seq};
+                combined.append(newArrows);
+                newSequences.push_back(combined);
+            }
+        }
+        return newSequences;
+    }
+
+    PressList getNumericSequence(const Presses& code)
+    {
+        PressList sequences {};
         Button position {Numeric::start};
         for (Press button : code)
         {
@@ -230,19 +269,22 @@ namespace aoc21a
             Button next {Numeric::keypadPos.at(button)};
             if (next != position)
             {
-                PressSequence arrows {getNumericalPresses(position, next, preferHorizontal)};
-                sequence.insert(sequence.end(), arrows.begin(), arrows.end());
+                PressList arrows {getNumericalPresses(position, next)};
+                // bit wasteful to create a copy of the vector and re-assign
+                // but safer than mixing things up
+                sequences = addNewArrows(sequences, arrows);
             }
             position = next;
             // now press the button
-            sequence.push_back('A');
+            for (Presses& seq : sequences)
+                seq.push_back('A');
         }
-        return sequence;
+        return sequences;
     }
 
-    PressSequence getDirectionalSequence(const PressSequence& prevSeq)
+    PressList getDirectionalSequence(const Presses& prevSeq)
     {
-        PressSequence sequence {};
+        PressList sequences {};
         Button position {Directional::start};
         for (Press button : prevSeq)
         {
@@ -250,37 +292,49 @@ namespace aoc21a
             Button next {Directional::keypadPos.at(button)};
             if (next != position)
             {
-                PressSequence arrows {getVerticalPresses(position, next)};
-                sequence.insert(sequence.end(), arrows.begin(), arrows.end());
+                PressList arrows {getDirectionalPresses(position, next)};
+                sequences = addNewArrows(sequences, arrows);
             }
             position = next;
             // now press the button
-            sequence.push_back('A');
+            for (Presses& seq : sequences)
+                seq.push_back('A');
         }
-        return sequence;
+        return sequences;
     }
 
-    CodeInt getButtonPresses(const Presses& code, bool preferHorizontal)
+    CodeInt shortestSequenceSize(const PressList& sequences)
+    {
+        size_t min {0};
+        for (const Presses& seq : sequences)
+        {
+            if (min == 0 || seq.size() < min)
+                min = seq.size();
+        }
+        // bit of a cheat here. Do properly if this was for something bigger
+        return static_cast<long long>(min);
+    }
+
+    CodeInt getButtonPresses(const Presses& code)
     {
         // start with numeric keypad
-        PressSequence numericSequence {getNumericSequence(code, preferHorizontal)};
-        std::cout << code << " (n): ";
-        for (auto s : numericSequence)
-            std::cout << s;
-        std::cout << '\n';
+        PressList numericSequence {getNumericSequence(code)};
         // move onto first directional keypad
-        PressSequence directionalSeq1 {getDirectionalSequence(numericSequence)};
-        std::cout << code << " (d1): ";
-        for (auto s : directionalSeq1)
-            std::cout << s;
-        std::cout << '\n';
+        PressList directionalSeq1 {};
+        for (const Presses& numSeq : numericSequence)
+        {
+            PressList newDir1 {getDirectionalSequence(numSeq)};
+            directionalSeq1.insert(directionalSeq1.end(), newDir1.begin(), newDir1.end());
+        }
         // move onto second directional keypad
-        PressSequence directionalSeq2 {getDirectionalSequence(directionalSeq1)};
-        std::cout << code << " (d2): ";
-        for (auto s : directionalSeq2)
-            std::cout << s;
-        std::cout << '\n';
-        return directionalSeq2.size();
+        PressList directionalSeq2 {};
+        for (const Presses& dirSeq : directionalSeq1)
+        {
+            PressList newDir2 {getDirectionalSequence(dirSeq)};
+            directionalSeq2.insert(directionalSeq2.end(), newDir2.begin(), newDir2.end());
+        }
+        // find size of shortest final sequence
+        return shortestSequenceSize(directionalSeq2);
     }
 
     CodeInt getNumericPartOfCode(const Presses& code)
@@ -293,16 +347,7 @@ namespace aoc21a
         CodeInt complexity {0};
         for (const Presses& code : sequences)
         {
-            // CodeInt buttonPresses {getButtonPresses(code)};
-            CodeInt buttonPresses {};
-            bool preferHorizontal {true};
-            CodeInt horizontalPresses {getButtonPresses(code, preferHorizontal)};
-            preferHorizontal = false;
-            CodeInt verticalPresses {getButtonPresses(code, preferHorizontal)};
-            if (horizontalPresses < verticalPresses)
-                buttonPresses = horizontalPresses;
-            else
-                buttonPresses = verticalPresses;
+            CodeInt buttonPresses {getButtonPresses(code)};
             complexity += buttonPresses * getNumericPartOfCode(code);
         }
         return complexity;
