@@ -53,6 +53,10 @@ and then use that to essentially shortcut the answer
 i.e. we can find the shortest sequence after n keypads/iterations
 we can guarantee getting to any arrow (on directional keybad) in 3 arrows
 make sure to add 'A' to the end, so we can use this in the subsequent code
+the longest sequence for the numeric keypad is 5 arrows
+
+rather than setting up every permutation, use numeric sequence to decide
+saves from doing sequences that aren't used
 */
 
 using ButtonLoc = std::pair<size_t, size_t>;
@@ -113,6 +117,10 @@ namespace aoc21b
     using PressMap = std::map<std::pair<Press, Press>, PressList>;
     using FullPressMap = std::map<Presses, PressList>;
     using Index = size_t;
+    using Arrow = char;
+    using Arrows = std::string;
+    using ArrowMap = std::map<Arrows, Presses>;
+    using ArrowList = std::vector<Arrows>;
 
     constexpr Move getDirection(char c)
     {
@@ -438,6 +446,144 @@ namespace aoc21b
         return dirSeqMap.at(prevSeq);
     }
 
+    ArrowList generateArrowCombinations()
+    {
+        ArrowList combinations {};
+
+        Arrow up {getArrow(Direction::north)};
+        Arrow right {getArrow(Direction::east)};
+        Arrow down {getArrow(Direction::south)};
+        Arrow left {getArrow(Direction::west)};
+
+        ArrowList singleArrows {
+            std::string(1, up),
+            std::string(1, right),
+            std::string(1, down),
+            std::string(1, left),
+        };
+        combinations.insert(combinations.end(), singleArrows.begin(), singleArrows.end());
+
+        ArrowList doubleArrows {
+            "^^",
+            "^>",
+            ">^",
+            ">>",
+            ">v",
+            "v>",
+            "vv",
+            "v<",
+            "<v",
+            "<<",
+            "<^",
+            "^<",
+        };
+        combinations.insert(combinations.end(), doubleArrows.begin(), doubleArrows.end());
+
+        // need to be in lexicographical order for next_permutation
+        // in ASCII, < is before > is before ^ is before v
+        ArrowList tripleArrows {
+            "^^^",
+            ">^^",
+            ">>^",
+            ">>>",
+            ">>v",
+            ">vv",
+            "vvv",
+            "<vv",
+            "<<v",
+            "<<<",
+            "<<^",
+            "<^^",
+        };
+        for (Arrows& arw : tripleArrows)
+        {
+            combinations.push_back(arw);
+            while (std::next_permutation(arw.begin(), arw.end()))
+                combinations.push_back(arw);
+        }
+
+        // can go max 3 vertically and 2 horizontally
+        ArrowList quadArrows {
+            ">^^^",
+            ">>^^",
+            ">>vv",
+            ">vvv",
+            "<vvv",
+            "<<vv",
+            "<<^^",
+            "<^^^",
+        };
+        for (Arrows& arw : quadArrows)
+        {
+            combinations.push_back(arw);
+            while (std::next_permutation(arw.begin(), arw.end()))
+                combinations.push_back(arw);
+        }
+
+        // max movement across keypad, only a few valid combinations
+        ArrowList quintArrows {
+            // ">>^^^", // this is not a valid move
+            ">>vvv",
+            // "<<vvv", // this is not a valid move
+            "<<^^^",
+        };
+        for (Arrows& arw : quintArrows)
+        {
+            combinations.push_back(arw);
+            while (std::next_permutation(arw.begin(), arw.end()))
+                combinations.push_back(arw);
+        }
+
+        // need to add 'A' to the end of all codes
+        for (Arrows& arw : combinations)
+            arw.append("A");
+
+        return combinations;
+    }
+
+    Presses shortestSequence(const PressList& sequences)
+    {
+        Presses shortest;
+        for (const Presses& seq : sequences)
+        {
+            if (shortest.size() == 0 || seq.size() < shortest.size())
+                shortest = seq;
+        }
+        return shortest;
+    }
+
+    template <int extraDirectionalRobots>
+    Presses getShortestArrowSequence(const Arrows& arrow, PressMap& dirCodeMap, FullPressMap& dirSeqMap)
+    {
+        PressList currentSeq {arrow};
+        for (int r{0}; r < extraDirectionalRobots; ++r)
+        {
+            PressList newSeq {};
+            for (const Presses& seq : currentSeq)
+            {
+                PressList newDir {getDirectionalSequence(seq, dirCodeMap, dirSeqMap)};
+                newSeq.insert(newSeq.end(), newDir.begin(), newDir.end());
+            }
+            currentSeq = std::move(newSeq);
+        }
+        return shortestSequence(currentSeq);
+    }
+
+    template <int extraDirectionalRobots>
+    void trainArrows(ArrowMap& shortestArrows, PressMap& dirCodeMap, FullPressMap& dirSeqMap)
+    {
+        ArrowList arrows {generateArrowCombinations()};
+        // for (const Presses& p : arrows)
+        //     std::cout << p << '\n';
+        std::cout << "out of " << arrows.size() << '\n';
+        int counter {1};
+        for (const Arrows& arw : arrows)
+        {
+            std::cout << "\tat: " << counter++ << '\n';
+            shortestArrows[arw] = getShortestArrowSequence<extraDirectionalRobots>(arw, dirCodeMap, dirSeqMap);
+        }
+    }
+
     CodeInt shortestSequenceSize(const PressList& sequences)
     {
         size_t min {0};
@@ -451,26 +597,47 @@ namespace aoc21b
     }
 
     template <int extraDirectionalRobots>
-    CodeInt getButtonPresses(const Presses& code, ButtonMap& numCodeMap, PressMap& dirCodeMap, FullPressMap& dirSeqMap)
+    CodeInt getButtonPresses(const Presses& code, ButtonMap& numCodeMap, const ArrowMap& shortestArrowSequences, PressMap& dirCodeMap, FullPressMap& dirSeqMap)
     {
         // start with numeric keypad
         PressList numericSequence {getNumericSequence(code, numCodeMap)};
-        std::cout << "shortest num " << shortestSequenceSize(numericSequence) << '\n';
+        // std::cout << "shortest num " << shortestSequenceSize(numericSequence) << '\n';
 
         // move onto directional keypads
-        PressList currentSeq {std::move(numericSequence)};
-        for (int r{0}; r < extraDirectionalRobots; ++r)
+        // use prepared shortestArrowSequences to jump to solution
+        PressList finalSeq {};
+        for (const Presses& numSeq : numericSequence)
         {
-            PressList newSeq {};
-            for (const Presses& seq : currentSeq)
+            Presses seqShort;
+            Index currIndex {0};
+            // std::cout << "seq: " << numSeq << '\n';
+            while (currIndex < numSeq.size())
             {
-                PressList newDir {getDirectionalSequence(seq, dirCodeMap, dirSeqMap)};
-                newSeq.insert(newSeq.end(), newDir.begin(), newDir.end());
+                Index nextA {numSeq.find('A', currIndex)};
+                // std::cout << "looking for " << numSeq.substr(currIndex, (nextA + 1) - currIndex) << ' ' << currIndex << '\n';
+                // std::cout << std::boolalpha;
+                // std::cout << "result: " << (shortestArrowSequences.find(numSeq.substr(currIndex, (nextA + 1) - currIndex)) != shortestArrowSequences.end()) << '\n';
+                seqShort += shortestArrowSequences.at(numSeq.substr(currIndex, (nextA + 1) - currIndex));
+                // std::cout << "test\n";
+                currIndex = nextA + 1;
             }
-            currentSeq = std::move(newSeq);
-            std::cout << "shortest dir " << shortestSequenceSize(currentSeq) << '\n';
+            finalSeq.push_back(seqShort);
         }
-        return shortestSequenceSize(currentSeq);
+        return shortestSequenceSize(finalSeq);
+
+        // PressList currentSeq {std::move(numericSequence)};
+        // for (int r{0}; r < extraDirectionalRobots; ++r)
+        // {
+        //     PressList newSeq {};
+        //     for (const Presses& seq : currentSeq)
+        //     {
+        //         PressList newDir {getDirectionalSequence(seq, dirCodeMap, dirSeqMap)};
+        //         newSeq.insert(newSeq.end(), newDir.begin(), newDir.end());
+        //     }
+        //     currentSeq = std::move(newSeq);
+        //     // std::cout << "shortest dir " << shortestSequenceSize(currentSeq) << '\n';
+        // }
+        // return shortestSequenceSize(currentSeq);
     }
 
     CodeInt getNumericPartOfCode(const Presses& code)
@@ -479,17 +646,15 @@ namespace aoc21b
     }
 
     template <int extraDirectionalRobots>
-    CodeInt getCodeComplexity(const PressList& sequences)
+    CodeInt getCodeComplexity(const PressList& sequences, const ArrowMap& shortestArrowSequences, PressMap& dirCodeMap, FullPressMap& dirSeqMap)
     {
         CodeInt complexity {0};
         ButtonMap numCodeMap {};
-        PressMap dirCodeMap {};
-        FullPressMap dirSeqMap {};
         for (const Presses& code : sequences)
         {
-            std::cout << "for " << code << '\n';
-            // CodeInt old {complexity};
-            complexity += getButtonPresses<extraDirectionalRobots>(code, numCodeMap, dirCodeMap, dirSeqMap) * getNumericPartOfCode(code);
+            // std::cout << "for " << code << '\n';
+            CodeInt old {complexity};
+            complexity += getButtonPresses<extraDirectionalRobots>(code, numCodeMap, shortestArrowSequences, dirCodeMap, dirSeqMap) * getNumericPartOfCode(code);
             // std::cout << "after " << (complexity - old) / getNumericPartOfCode(code) << ' ' << getNumericPartOfCode(code) << ", " << (complexity - old) << ' ' << complexity << '\n';
         }
         return complexity;
@@ -501,7 +666,13 @@ namespace aoc21b
         PressList sequences {};
         for (std::string_view line : lines)
             sequences.push_back(std::string(line));
-        return getCodeComplexity<extraDirectionalRobots>(sequences);
+        ArrowMap shortestArrowSequences {};
+        PressMap dirCodeMap {};
+        FullPressMap dirSeqMap {};
+        // Timer timer {};
+        trainArrows<extraDirectionalRobots>(shortestArrowSequences, dirCodeMap, dirSeqMap);
+        // std::cout << timer.getDuration() << '\n';
+        return getCodeComplexity<extraDirectionalRobots>(sequences, shortestArrowSequences, dirCodeMap, dirSeqMap);
     }
 }
 
