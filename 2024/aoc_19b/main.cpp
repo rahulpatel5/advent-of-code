@@ -26,7 +26,8 @@ bbrgwb
     constexpr std::size_t testLength {StringUtils::length(testInput)};
     constexpr std::array<std::string_view, testLength> testLines {StringUtils::split<testLength>(testInput)};
     
-    int designs {aoc19b::parseAndCountDesigns<length>(lines)};
+    // int designs {aoc19b::parseAndCountDesigns<testLength>(testLines)};
+    aoc19b::MatchInt designs {aoc19b::parseAndCountDesigns<length>(lines)};
     std::cout << "number of designs: " << designs << '\n';
     
     auto stopTime {std::chrono::high_resolution_clock::now()};

@@ -6,9 +6,7 @@
 #include <string>
 #include <vector>
 #include <set>
-#include "List.h"
-
-#include <iostream>
+#include <map>
 
 /*
 re-use solution for part 1
@@ -22,6 +20,13 @@ otherwise can miss some arrangements
 as expected, takes far too long to check each arrangement
 could try something like memoisation for repeat patterns?
 may be better to try one arrangement at a time (so memoisation is useful)?
+
+making each combination from towels causes lots of duplicates
+it will likely be more efficient to go through the design letter by letter
+and count how many ways to reach a certain point
+e.g. 3 ways to get to bgr, e.g. bg, r or b, gr or b, g, r
+by collecting (in a map?) the count of reaching a point
+we can more simply count combinations of reaching later points
 */
 
 namespace aoc19b
@@ -31,14 +36,12 @@ namespace aoc19b
     using Design = std::string;
     using Designs = std::set<Design>;
     using TowelSizes = std::pair<size_t, size_t>;
-    using Arrangement = std::vector<Design>;
-    using Arrangements = std::vector<Arrangement>;
-    using UniqueArrangements = std::set<Arrangement>;
-    using Index = size_t;
-    using Indexes = std::vector<Index>;
+    using TowelBySizeMap = std::map<size_t, Designs>;
+    using MatchInt = long long;
+    using DesignMatchMap = std::map<Design, MatchInt>;
 
     template <std::size_t N>
-    void getTowelsAndDesigns(Towels& towels, Designs& designs, const std::array<std::string_view, N>& lines)
+    void getTowelsAndDesigns(Towels& towels, Designs& designs, TowelBySizeMap& towelsBySize, const std::array<std::string_view, N>& lines)
     {
         for (std::string_view line : lines)
         {
@@ -47,12 +50,14 @@ namespace aoc19b
                 size_t nextComma {line.find(',')};
                 Towel firstTowel {line.substr(0, nextComma)};
                 towels.insert(firstTowel);
+                towelsBySize[firstTowel.size()].insert(firstTowel);
                 size_t currComma {nextComma + 1};
                 while (nextComma != std::string_view::npos)
                 {
                     nextComma = line.find(',', currComma);
                     Towel towel {line.substr(currComma + 1, nextComma - (currComma + 1))};
                     towels.insert(towel);
+                    towelsBySize[towel.size()].insert(towel);
                     currComma = nextComma + 1;
                 }
             }
@@ -75,126 +80,58 @@ namespace aoc19b
         return {min, max};
     }
 
-    int howManyTimesIsDesignPossible(const Design& design, const Towels& towels, const TowelSizes& towelSizesMinMax)
+    MatchInt howManyTimesIsDesignPossible(const Design& design, const Towels& towels, const TowelBySizeMap& towelsBySize, const TowelSizes& towelSizesMinMax)
     {
-        // std::cout << "0\n";
-        List validArrangements {};
-        // Arrangements validArrangements {};
-        int counter {0};
-        // use min and max towel sizes to determine for loop
-        // if we start with the largest towels, it may save time
-        for (size_t initial{towelSizesMinMax.second}; initial >= towelSizesMinMax.first; --initial)
+        // collect the different ways to reach a particular design
+        DesignMatchMap matches {};
+        // iterate through each letter of the design
+        for (size_t i{1}; i <= design.size(); ++i)
         {
-            Design start {design.substr(0, initial)};
-            // std::cout << "start, " << start.size() << '\n';
-            // if this design doesn't exist, skip
-            if (towels.find(start) == towels.end())
-                continue;
-            // check we haven't created the design already (somehow)
-            if (start == design)
-            {
-                validArrangements.add({start});
-                continue;
-                // std::cout << "\tstart matches design " << counter << '\n';
-            }
-            // if (design == "rrbgbr")
-            //     std::cout << "\t\tgoing for rrbgbr, with start " << start << '\n';
-            
-            List possibleDesigns {};
-            possibleDesigns.push({start});
+            // the design we want to match in this loop
+            Design currentDesign {design.substr(0, i)};
 
-            while (possibleDesigns.size() > 0)
+            // iterate through towels to add
+            for (size_t j{towelSizesMinMax.first}; j <= towelSizesMinMax.second; ++j)
             {
-                // std::cout << "\tloop " << possibleDesigns.size() << '\n';
-                Arrangement designsToAdd {};
-                List newToAdd {};
-                Indexes indexToDelete {};
-                UniqueArrangements uniqueLoopDesigns {};
-                for (size_t i{0}; i < possibleDesigns.size(); ++i)
+                // check if a towel matches the current size and design
+                if (j == i && towelsBySize.at(j).find(currentDesign) != towelsBySize.at(j).end())
+                    matches[currentDesign] += 1;
+                
+                // now check if there are combinations we can make
+                if (i > j)
                 {
-                    // std::cout << "3\n";
-                    bool firstMatch {true};
-                    for (size_t next{towelSizesMinMax.first}; next <= towelSizesMinMax.second; ++next)
-                    {
-                        size_t strSoFarSize {possibleDesigns.str_size(i)};
-                        // std::cout << "4\n";
-                        // if we're going above the design size, stop
-                        if (strSoFarSize + next > design.size())
-                            break;
-                        // std::cout << "5\n";
-                        // check if next substring exists
-                        Design nextString {design.substr(strSoFarSize, next)};
-                        if (towels.find(nextString) == towels.end())
-                            continue;
-                        // if we're repeating previous arrays, skip
-                        Arrangement newArrangement {possibleDesigns[i]};
-                        newArrangement.push_back(nextString);
-                        if (uniqueLoopDesigns.find(newArrangement) != uniqueLoopDesigns.end())
-                            continue;
-                            
-                        // we get here if it does exist
-                        uniqueLoopDesigns.insert(newArrangement);
-                        // check if we've got the target design
-                        if (strSoFarSize + nextString.size() == design.size() && nextString == design.substr(strSoFarSize, nextString.size()))
-                        {
-                            // std::cout << "7a\n";
-                            validArrangements.push({newArrangement});
-                        }
-                        else if (firstMatch)
-                        {
-                            // std::cout << "7b, " << designsToAdd.size() << '\n';
-                            designsToAdd.push_back(nextString);
-                            // std::cout << "7bi, " << designsToAdd.size() << '\n';
-                            firstMatch = false;
-                        }
-                        else
-                        {
-                            // std::cout << "7c\n";
-                            newToAdd.push(newArrangement);
-                        }
-                    }
-                    // std::cout << "8\n";
-                    if (firstMatch)
-                    {
-                        // std::cout << "8a, to del: " << i << '\n';
-                        indexToDelete.push_back(i);
-                    }
+                    Design previous {design.substr(0, i - j)};
+                    Design next {design.substr(i - j, j)};
+                    if (matches.find(previous) != matches.end() && towelsBySize.at(j).find(next) != towelsBySize.at(j).end())
+                        matches[currentDesign] += matches.at(previous);
                 }
-                // std::cout << "9a: " << indexToDelete.size() << ' ' << possibleDesigns.size() << '\n';
-                // now do some post loop clean up
-                possibleDesigns.trim(indexToDelete);
-                // std::cout << "9b: " << designsToAdd.size() << ' ' << possibleDesigns.size() << '\n';
-                possibleDesigns.add(designsToAdd);
-                // std::cout << "9c: " << newToAdd.size() << ' ' << possibleDesigns.size() << '\n';
-                possibleDesigns.push_many(newToAdd);
-                // std::cout << "9d: " << possibleDesigns.size() << '\n';
             }
         }
-        // std::cout << "10\n";
-        UniqueArrangements unique {validArrangements.begin(), validArrangements.end()};
-        return static_cast<int>(unique.size());
+        if (matches.find(design) != matches.end())
+            return matches.at(design);
+        else
+            return 0;
     }
 
-    int countPossibleDesigns(const Designs& designs, const Towels& towels, const TowelSizes& towelSizesMinMax)
+    MatchInt countPossibleDesigns(const Designs& designs, const Towels& towels, const TowelBySizeMap& towelsBySize, const TowelSizes& towelSizesMinMax)
     {
-        int success {0};
-        std::cout << "going thru: " << designs.size() << '\n';
+        MatchInt success {0};
         for (const Design& design : designs)
         {
-            std::cout << "for: " << design << ' ' << design.size() << '\n';
-            success += howManyTimesIsDesignPossible(design, towels, towelSizesMinMax);
+            success += howManyTimesIsDesignPossible(design, towels, towelsBySize, towelSizesMinMax);
         }
         return success;
     }
 
     template <std::size_t N>
-    int parseAndCountDesigns(const std::array<std::string_view, N>& lines)
+    MatchInt parseAndCountDesigns(const std::array<std::string_view, N>& lines)
     {
         Towels towels {};
         Designs designs {};
-        getTowelsAndDesigns<N>(towels, designs, lines);
+        TowelBySizeMap towelsBySize {};
+        getTowelsAndDesigns<N>(towels, designs, towelsBySize, lines);
         TowelSizes towelSizesMinMax {getMinMaxTowelSizes(towels)};
-        return countPossibleDesigns(designs, towels, towelSizesMinMax);
+        return countPossibleDesigns(designs, towels, towelsBySize, towelSizesMinMax);
     }
 }
 
