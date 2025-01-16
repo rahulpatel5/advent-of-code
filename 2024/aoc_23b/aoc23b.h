@@ -8,8 +8,10 @@
 #include <set>
 #include <algorithm>
 #include <map>
+#include "NetworkGraph.h"
 
 #include <iostream>
+#include "../../shared/Timer.h"
 
 /*
 read all connection pairs
@@ -37,6 +39,12 @@ if that's done right, it should in theory be fine to solve
 
 it's a waste of time to generate connections every time
 generate and store them in a map, to access later
+
+could a graph be a good approach?
+seems promising
+another thing that could help is setting the max iterations to links
+assuming that all computers in the network must be connected
+this reduces the total number of loops that are needed
 */
 
 namespace aoc23b
@@ -52,6 +60,13 @@ namespace aoc23b
     using Connections = std::vector<Connection>;
     using Networks = std::vector<Connections>;
     using UniqueConnections = std::set<Connection>;
+
+    using IntComputer = int;
+    using StrToIntMap = std::map<std::string, IntComputer>;
+    using IntToStrMap = std::map<IntComputer, std::string>;
+    using IntConnection = std::pair<IntComputer, IntComputer>;
+    using IntConnections = std::vector<IntConnection>;
+    using UniqueIntComputers = std::set<IntComputer>;
 
     // this function has the side effect of collecting unique computers
     template <std::size_t N>
@@ -70,125 +85,44 @@ namespace aoc23b
         return connections;
     }
 
-    Computers getComputerConnections(const Computer& computer, const Connections& connections)
+    void computerConversion(StrToIntMap& stringToInt, IntToStrMap& intToString, const UniqueComputers& uniqueSet)
     {
-        Computers joined {};
-        for (const Connection& connection : connections)
+        int index {0};
+        for (const Computer& computer : uniqueSet)
         {
-            if (connection.first == computer)
-                joined.push_back(connection.second);
-            else if (connection.second == computer)
-                joined.push_back(connection.first);
+            stringToInt[computer] = index;
+            intToString[index] = computer;
+            ++index;
         }
-        return joined;
     }
 
-    size_t findLongestNetwork(const ComputersList& networks)
+    IntConnections getIntConnections(const Connections& connections, const StrToIntMap& strToInt)
     {
-        size_t longestIndex {};
-        size_t largestSize {};
-        for (size_t i{0}; i < networks.size(); ++i)
+        IntConnections intConnections {};
+        for (const Connection& conn : connections)
         {
-            if (networks.at(i).size() > largestSize)
-            {
-                largestSize = networks.at(i).size();
-                longestIndex = i;
-            }
+            intConnections.push_back({strToInt.at(conn.first), strToInt.at(conn.second)});
         }
-        return longestIndex;
+        return intConnections;
     }
 
-    // function has side effect of adding to ConnectDict
-    UniqueComputers connectOtherComputers(const Computer& computer, ConnectDict& connectDict, const Connections& connections, size_t maxIterations)
+    // UniqueIntComputers findLargestNetwork(const NetworkGraph& graph)
+    std::list<int> findLargestNetwork(const NetworkGraph& graph)
     {
-        Computers network {};
-        network.push_back(computer);
-        ComputersList allNetworks {};
-        allNetworks.push_back(network);
-        ComputersList loopedNetworks {};
+        return graph.getLongestLoop();
+    }
 
-        // some variables to handle the do-while loop
-        size_t loops {0};
-        int sizeCounter {};
-        do
-        {
-            std::cout << "\tloop size: " << allNetworks.size() << '\n';
-            sizeCounter = 0;
-            ComputersList newAllNetworks {};
-            for (const Computers& network : allNetworks)
-            {
-                Computer current {network.back()};
-                // std::cout << current << ": ";
-                if (connectDict.find(current) == connectDict.end())
-                    connectDict[current] = getComputerConnections(current, connections);
-                
-                Computers currentNetwork {network};
-                for (const Computer& pairedComp : connectDict.at(current))
-                {
-                    // std::cout << pairedComp << ' ';
-                    if (std::find(currentNetwork.begin(), currentNetwork.end(), pairedComp) != currentNetwork.end())
-                    {
-                        if (pairedComp == computer)
-                            loopedNetworks.push_back(currentNetwork);
-                        continue;
-                    }
-                    Computers tempNetwork {currentNetwork};
-                    tempNetwork.push_back(pairedComp);
-                    newAllNetworks.push_back(tempNetwork);
-                    ++sizeCounter;
-                }
-                // std::cout << '\n';
-            }
-            allNetworks = newAllNetworks;
-        } while (sizeCounter > 0 && loops < maxIterations);
+    Password getPassword(const UniqueIntComputers& networkInt, const IntToStrMap& intToStr)
+    {
+        // first change to string
+        UniqueComputers networkStr {};
+        for (IntComputer computerInt : networkInt)
+            networkStr.insert(intToStr.at(computerInt));
         
-        // std::cout << "total looped: " << loopedNetworks.size() << '\n';
-        // find the longest network
-        size_t longestIndex {findLongestNetwork(loopedNetworks)};
-        UniqueComputers largestNetwork {loopedNetworks[longestIndex].begin(), loopedNetworks[longestIndex].end()};
-        // std::cout << "largest: " << loopedNetworks[longestIndex].size() << '\n';
-        // for (auto c : loopedNetworks[longestIndex])
-        //     std::cout << c << ' ';
-        // std::cout << '\n';
-        return largestNetwork;
-    }
-
-    UniqueComputers getNetworks(const Computers& unique, const Connections& connections)
-    {
-        // collect connections to save time
-        ConnectDict connectDict {};
-        UniqueComputers largestNetwork {};
-        // when iterating through networks, max is total number of computers
-        // see if there's a way to update this to reduce time?
-        size_t maxIterations {unique.size()};
-
-        // logic is we go through each unique computer and find networks
-        // but if the largest network so far is 15 out of 30 total computers
-        // it's a waste of time searching the back 15 computers
-        // so we shorten the for loop by the size of the largest network
-        // first condition (with arbitrary number) to ensure first loops run
-        std::cout << "unique: " << unique.size() << '\n';
-        for (size_t i{0}; i < unique.size() - largestNetwork.size(); ++i)
-        {
-            // std::cout << "iter: " << i << " of " << unique.size() - largestNetwork.size() - 1 << '\n';
-            // if (connectDict.find(unique[i]) == connectDict.end())
-            //     connectDict[unique[i]] = getComputerConnections(unique[i], connections);
-            // UniqueComputers innerNetwork {connectOtherComputers(unique[i], connectDict, connections, maxIterations)};
-            // if (innerNetwork.size() > largestNetwork.size())
-            //     largestNetwork = innerNetwork;
-            // std::cout << i << " fin " << largestNetwork.size() << '\n';
-            connectDict[unique[i]] = getComputerConnections(unique[i], connections);
-        }
-        // for (auto [key, value] : connectDict)
-        //     std::cout << key << ' ' << value.size() << '\n';
-        return largestNetwork;
-    }
-
-    Password getPassword(const UniqueComputers& network)
-    {
+        // now get password
         Password password {};
         bool isFirstLoop {true};
-        for (const Computer& computer : network)
+        for (const Computer& computer : networkStr)
         {
             if (!isFirstLoop)
                 password.append(",");
@@ -202,12 +136,33 @@ namespace aoc23b
     Password parseAndGetPassword(const std::array<std::string_view, N>& lines)
     {
         UniqueComputers uniqueSet {};
-        Connections connections {getConnections<N>(lines, uniqueSet)};
-        // it's easier to access elements of a vector
-        // so this is a hacky way to work around to not use a set
-        Computers unique {uniqueSet.begin(), uniqueSet.end()};
-        UniqueComputers largestNetwork {getNetworks(unique, connections)};
-        return getPassword(largestNetwork);
+        Connections connectionsStr {getConnections<N>(lines, uniqueSet)};
+        // it'll be easier to use a graph with int
+        // so convert computers from string to int
+        StrToIntMap stringToInt {};
+        IntToStrMap intToString {};
+        computerConversion(stringToInt, intToString, uniqueSet);
+        IntConnections connectionsInt {getIntConnections(connectionsStr, stringToInt)};
+        // for (auto [key, value] : intToString)
+        //     std::cout << key << ": " << value << '\n';
+
+        NetworkGraph graph(uniqueSet.size());
+        // add edges
+        for (const IntConnection& i : connectionsInt)
+        {
+            graph.addEdge(i.first, i.second);
+            graph.addEdge(i.second, i.first);
+        }
+
+        // graph.printGraph();
+
+        // UniqueIntComputers largestNetwork {findLargestNetwork(graph)};
+        std::list<int> largestNetworkInt {findLargestNetwork(graph)};
+        // for (int n : largestNetworkInt)
+        //     std::cout << n << ' ';
+        // std::cout << '\n';
+        UniqueIntComputers largestNetwork {largestNetworkInt.begin(), largestNetworkInt.end()};
+        return getPassword(largestNetwork, intToString);
     }
 }
 
