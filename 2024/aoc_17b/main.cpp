@@ -23,7 +23,7 @@ Program: 0,3,5,4,3,0
     
     // aoc17b::RegisterInt output {aoc17b::parseAndGetCopyProgram<testLength>(testLines)};
     aoc17b::RegisterInt output {aoc17b::parseAndGetCopyProgram<length>(lines)};
-    std::cout << "Register A value for copy program: " << output << '\n';
+    std::cout << "Smallest register A value for copy program: " << output << '\n';
     
     auto stopTime {std::chrono::high_resolution_clock::now()};
     const std::chrono::duration<double> durationSeconds {stopTime - startTime};
