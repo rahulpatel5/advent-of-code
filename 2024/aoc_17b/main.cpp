@@ -21,8 +21,8 @@ Program: 0,3,5,4,3,0
     constexpr std::size_t testLength {StringUtils::length(testInput)};
     constexpr std::array<std::string_view, testLength> testLines {StringUtils::split<testLength>(testInput)};
     
-    long long output {aoc17b::parseAndGetCopyProgram<testLength>(testLines)};
-    // long long output {aoc17b::parseAndGetCopyProgram<length>(lines)};
+    // aoc17b::RegisterInt output {aoc17b::parseAndGetCopyProgram<testLength>(testLines)};
+    aoc17b::RegisterInt output {aoc17b::parseAndGetCopyProgram<length>(lines)};
     std::cout << "Register A value for copy program: " << output << '\n';
     
     auto stopTime {std::chrono::high_resolution_clock::now()};

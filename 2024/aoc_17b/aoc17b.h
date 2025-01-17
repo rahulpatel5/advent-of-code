@@ -55,20 +55,43 @@ perhaps we can try something akin to a binary search?
 the end elements of the output don't change often
 so we can get the output at a mid-point and check if it matches
 then continue by looking at the next earliest element
+need to be careful - output doesn't change predictably
+can't expect sequential changes e.g. want 3 so too high if 4
+we just want to reduce the number of loops that we have to go through
+
+algorithm for getting limit
+1. start with last element of output
+2. get output for lower and upper bounds
+3. if bounds just outside where equal to last element, proceed to 5
+4. otherwise adjust (usually reduce) the bounds and go back to 2
+5. move to previous element of output and repeat 2-4
+6. when have iterated over half of elements, or limit is <threshold, stop
+
+using bounds doesn't seem to work like this
+it may be that matching elements changes too frequently
+need to be more precise with how algorithm settings are set
+or try another approach e.g. directly iterating until reaching the target
 */
 
 namespace aoc17b
 {
+    using RegisterInt = long long;
+    using Registers = std::map<char, RegisterInt>;
+    using Program = std::vector<int>;
+    using Limit = long long;
+    using Limits = std::pair<Limit, Limit>;
+    using OperandInt = long long;
+
     template <std::size_t N>
-    std::map<char, long long> readRegisters(const std::array<std::string_view, N>& lines)
+    Registers readRegisters(const std::array<std::string_view, N>& lines)
     {
-        std::map<char, long long> registers {};
+        Registers registers {};
         for (std::string_view line : lines)
         {
             if (line.find("Register ") == std::string_view::npos)
                 continue;
             size_t colon {line.find(':')};
-            long long num {std::stoll(std::string(line.substr(colon + 2)))};
+            RegisterInt num {std::stoll(std::string(line.substr(colon + 2)))};
             size_t firstSpace {line.find(' ')};
             char reg {line.data()[firstSpace + 1]};
             registers[reg] = num;
@@ -77,9 +100,9 @@ namespace aoc17b
     }
 
     template <std::size_t N>
-    std::vector<int> readProgram(const std::array<std::string_view, N>& lines)
+    Program readProgram(const std::array<std::string_view, N>& lines)
     {
-        std::vector<int> program {};
+        Program program {};
 
         std::string_view line {};
         for (std::string_view row : lines)
@@ -103,9 +126,9 @@ namespace aoc17b
         return program;
     }
 
-    long long getComboOperand(int pointer, const std::vector<int>& program, const std::map<char, long long>& registers)
+    OperandInt getComboOperand(int pointer, const Program& program, const Registers& registers)
     {
-        long long literalOperand {program[pointer + 1]};
+        OperandInt literalOperand {program[pointer + 1]};
         if (literalOperand < 4)
             return literalOperand;
         else if (literalOperand < 7)
@@ -116,7 +139,7 @@ namespace aoc17b
             throw std::invalid_argument("Received unexpected operand.\n");
     }
 
-    bool isOutputACopyProgram(const std::vector<int>& output, const std::vector<int>& program)
+    bool isOutputACopyProgram(const Program& output, const Program& program)
     {
         for (size_t i{0}; i < output.size(); ++i)
         {
@@ -126,17 +149,17 @@ namespace aoc17b
         return true;
     }
 
-    std::vector<int> runProgram(std::map<char, long long> registers, const std::vector<int>& program)
+    Program runProgram(Registers registers, const Program& program)
     {
-        std::vector<int> output {};
+        Program output {};
         size_t pointer {0};
         // think it makes more sense to keep all this together
         // if this were a longer project, might be neater to send to functions
         // std::cout << "start: " << registers.at('A') << ' ' << registers.at('B') << ' ' << registers.at('C') << '\n';
         while (pointer < program.size() && output.size() <= program.size())
         {
-            long long literalOperand {program[pointer + 1]};
-            long long comboOperand {getComboOperand(pointer, program, registers)};
+            OperandInt literalOperand {program[pointer + 1]};
+            OperandInt comboOperand {getComboOperand(pointer, program, registers)};
             // opcode 0 (adv)
             if (program[pointer] == 0)
             {
@@ -201,9 +224,9 @@ namespace aoc17b
         return output;
     }
 
-    std::pair<long long, long long> getCopyProgramLimits(const std::map<char, long long>& registers, const std::vector<int>& program)
+    Limits getCopyProgramLimits(const Registers& registers, const Program& program)
     {
-        long long divisor {};
+        Limit divisor {};
         int count {0};
         for (size_t i{0}; i < program.size(); ++i)
         {
@@ -216,46 +239,228 @@ namespace aoc17b
         // this doesn't work if the divisor is a register (>3)
         // more complex if there's more than one divisor, so skipping that
         // setting default to 10 million loops
-        long long defaultLoops {10'000'000};
+        Limit defaultLoops {10'000'000};
         if (divisor > 3 || count > 1)
             return {0, defaultLoops};
         
 
         // adding 0.5 to account for std::pow outputting double
         // based on this post: https://stackoverflow.com/questions/7094108/how-to-raise-an-int-or-long-to-a-power-in-c
-        long long lowerBound {(long long)(0.5 + std::pow(2, divisor * (program.size() - 1)))};
-        long long upperBound {(long long)(0.5 + std::pow(2, divisor * program.size()))};
+        Limit lowerBound {(Limit)(0.5 + std::pow(2, divisor * (program.size() - 1)))};
+        Limit upperBound {(Limit)(0.5 + std::pow(2, divisor * program.size()))};
         return {lowerBound, upperBound};
     }
 
-    long long findCopyProgram(const std::map<char, long long>& registers, const std::vector<int>& program)
+    Limits getRefinedLimits(const Registers& registers, const Program& program, const Limits& absoluteLimits)
     {
-        long long origRegisterAValue {registers.at('A')};
-        // find approriate number of iterations, with default 100 million loops
-        std::pair<long long, long long> loops {getCopyProgramLimits(registers, program)};
-        // std::cout << "from " << loops.first << " to " << loops.second << '\n';
-        // loops = {46187030, 46187031};
-        long long valueRegisterA {loops.first};
-        while (valueRegisterA < loops.second)
+        // start with last element
+        size_t element {program.size() - 1};
+        // we'll find limits based on half the size of the program
+        // add one more element as currently not limiting range enough
+        size_t elementIter {program.size() / 2 - 1};
+        // set the bounds we'll be using
+        Limit lowerBound {absoluteLimits.first};
+        Limit upperBound {absoluteLimits.second};
+        // we'll set a threshold where we're satisfied with the bounds
+        Limit threshold {1'000'000};
+        if (upperBound - lowerBound <= threshold)
+            return {lowerBound, upperBound};
+        // set how quickly we change the limits
+        // between 0 and 1. Closer to 0 takes longer to change
+        double adjust {0.2};
+        // std::cout << "to: " << elementIter << '\n';
+        while (element >= elementIter)
         {
-            std::map<char, long long> copyRegisters {registers};
-            copyRegisters['A'] = valueRegisterA;
-            std::vector<int> output {runProgram(copyRegisters, program)};
+            // std::cout << element << ' ' << program.at(element) << '\n';
+            Limit innerLowerBound {lowerBound};
+            Limit innerUpperBound {upperBound};
+            bool isComplete {false};
+            while (!isComplete)
+            {
+                // this is inefficent
+                // would be faster to run only if lower/upper point change
+                Registers copyRegisters {registers};
+                copyRegisters['A'] = innerLowerBound;
+                Program lowerOutput {runProgram(copyRegisters, program)};
+                copyRegisters = registers;
+                copyRegisters['A'] = innerUpperBound;
+                Program upperOutput {runProgram(copyRegisters, program)};
+                
+                Limit midPoint {(innerUpperBound + innerLowerBound) / 2};
+                copyRegisters = registers;
+                copyRegisters['A'] = midPoint;
+                Program midOutput {runProgram(copyRegisters, program)};
 
-            // if (valueRegisterA % 10'000 == 0)
+                // std::cout << innerLowerBound << ' ' << midPoint << ' ' << innerUpperBound << '\n';
+                // std::cout << '\t' << lowerOutput.at(element) << ' ' << midOutput.at(element) << ' ' << upperOutput.at(element) << ' ' << program.at(element) << '\n';
+                // std::cout << '\t';
+                // for (int n : midOutput)
+                //     std::cout << n << ' ';
+                // std::cout << '\n';
+
+                // first need to guard against wrong output size
+                if (lowerOutput.size() != program.size() || upperOutput.size() != program.size())
+                {
+                    // not handling situation where lower output is larger
+                    // or where upper output is smaller
+                    if (lowerOutput.size() < program.size())
+                        innerLowerBound = (midPoint + innerLowerBound) / 2;
+                    if (upperOutput.size() > program.size())
+                        innerUpperBound = (innerUpperBound + midPoint) / 2;
+                    continue;
+                }
+
+                Limit tempLowerBound {static_cast<Limit>(innerLowerBound + (midPoint - innerLowerBound) * adjust)};
+                Limit tempUpperBound {static_cast<Limit>(innerUpperBound - (innerUpperBound - midPoint) * adjust)};
+                copyRegisters = registers;
+                copyRegisters['A'] = tempLowerBound;
+                Program tempLowerOutput {runProgram(copyRegisters, program)};
+                copyRegisters = registers;
+                copyRegisters['A'] = tempUpperBound;
+                Program tempUpperOutput {runProgram(copyRegisters, program)};
+
+                // std::cout << "\t\t" << tempLowerOutput.at(element) << ' ' << tempUpperOutput.at(element) << '\n';
+
+                if (lowerOutput.at(element) != program.at(element) && tempLowerOutput.at(element) == program.at(element) && upperOutput.at(element) != program.at(element) && tempUpperOutput.at(element) == program.at(element))
+                {
+                    isComplete = true;
+                    if (innerUpperBound - innerLowerBound <= threshold)
+                        break;
+                    continue;
+                }
+
+                // how we change bounds can be guided by midpoint
+                if (midOutput.at(element) == program.at(element))
+                {
+                    if (lowerOutput.at(element) != program.at(element))
+                    {
+                        innerLowerBound += (midPoint - innerLowerBound) * adjust;
+                    }
+                    else
+                    {
+                        if (innerLowerBound == lowerBound)
+                        {
+                            if (upperOutput.at(element) != program.at(element) && tempUpperOutput.at(element) == program.at(element))
+                            {
+                                isComplete = true;
+                                if (innerUpperBound - innerLowerBound <= threshold)
+                                    break;
+                                continue;
+                            }
+                        }
+                        else
+                        {
+                            innerLowerBound -= (innerLowerBound - lowerBound) * adjust * adjust;
+                        }
+                    }
+                    
+                    if (upperOutput.at(element) != program.at(element))
+                    {
+                        innerUpperBound -= (innerUpperBound - midPoint) * adjust;
+                    }
+                    else
+                    {
+                        if (innerUpperBound == upperBound)
+                        {
+                            if (lowerOutput.at(element) != program.at(element) && tempLowerOutput.at(element) == program.at(element))
+                            {
+                                isComplete = true;
+                                if (innerUpperBound - innerLowerBound <= threshold)
+                                    break;
+                                continue;
+                            }
+                        }
+                        else
+                        {
+                            innerUpperBound += (upperBound - innerUpperBound) * adjust * adjust;
+                        }
+                    }
+                }
+                else
+                {
+                    // std::cout << "-1\n";
+                    // if midpoint doesn't match program
+                    // that means we shouldn't change bounds symmetrically
+                    if (lowerOutput.at(element) != program.at(element) && upperOutput.at(element) != program.at(element))
+                    {
+                        // std::cout << "0\n";
+                        innerLowerBound += (midPoint - innerLowerBound) * adjust;
+                        // favour changing upper bound by less
+                        innerUpperBound -= (innerUpperBound - midPoint) * adjust * adjust;
+                    }
+                    else if (lowerOutput.at(element) == program.at(element) && upperOutput.at(element) == program.at(element))
+                    {
+                        innerLowerBound -= (innerLowerBound - lowerBound) * adjust;
+                        // favour changing upper bound by less
+                        innerUpperBound += (upperBound - innerUpperBound) * adjust * adjust;
+                    }
+                    else
+                    {
+                        // std::cout << "1\n";
+                        // if upper bound matches, shift upwards
+                        if (lowerOutput.at(element) != program.at(element) && upperOutput.at(element) == program.at(element))
+                        {
+                            // std::cout << "2\n";
+                            innerLowerBound += (midPoint - innerLowerBound) * adjust;
+                            innerUpperBound += (upperBound - innerUpperBound) * adjust;
+                        }
+                        // if lower bound matches, shift downwards
+                        else if (lowerOutput.at(element) == program.at(element) && upperOutput.at(element) != program.at(element))
+                        {
+                            // std::cout << "3\n";
+                            innerLowerBound -= (innerLowerBound - lowerBound) * adjust;
+                            innerUpperBound += (innerUpperBound - midPoint) * adjust;
+                        }
+                    }
+                }
+            }
+            
+            lowerBound = innerLowerBound;
+            upperBound = innerUpperBound;
+            --element;
+        }
+        Registers tempRegisters {registers};
+        tempRegisters['A'] = lowerBound;
+        Program tempProgramDown {runProgram(tempRegisters, program)};
+        tempRegisters = registers;
+        tempRegisters['A'] = upperBound;
+        Program tempProgramUp {runProgram(tempRegisters, program)};
+        // std::cout << "lower: ";
+        // for (int n : tempProgramDown)
+        //     std::cout << n << ' ';
+        // std::cout << '\n';
+        // std::cout << "upper: ";
+        // for (int n : tempProgramUp)
+        //     std::cout << n << ' ';
+        // std::cout << '\n';
+        return {lowerBound, upperBound};
+    }
+
+    RegisterInt findCopyProgram(const Registers& registers, const Program& program, const Limits& limits)
+    {
+        RegisterInt origRegisterAValue {registers.at('A')};
+        RegisterInt valueRegisterA {limits.first};
+        while (valueRegisterA < limits.second)
+        {
+            Registers copyRegisters {registers};
+            copyRegisters['A'] = valueRegisterA;
+            Program output {runProgram(copyRegisters, program)};
+
+            // if (valueRegisterA % 1'000'000 == 0)
+            //     std::cout << valueRegisterA << '\n';
             // {
-            //     std::cout << valueRegisterA << ' ' << output.size() << '\n';
-            //     for (int n : output)
-            //         std::cout << n << ',';
-            //     std::cout << '\n';
+                // std::cout << valueRegisterA << ": ";
+                // for (int n : output)
+                //     std::cout << n << ',';
+                // std::cout << '\n';
             // }
             
             // adjust if output size is too low or high
             // need to figure out a good way to do this
-            if (output.size() < program.size())
-                valueRegisterA = (loops.second + valueRegisterA) / 2;
-            else if (output.size() > program.size())
-                valueRegisterA = (valueRegisterA + loops.first) / 2;
+            // if (output.size() < program.size())
+            //     valueRegisterA = (limits.second + valueRegisterA) / 2;
+            // else if (output.size() > program.size())
+            //     valueRegisterA = (valueRegisterA + limits.first) / 2;
 
             if (output.size() == program.size() && isOutputACopyProgram(output, program))
                 return valueRegisterA;
@@ -265,10 +470,10 @@ namespace aoc17b
             // std::cout << "at: " << valueRegisterA << ' ' << output.size() << '\n';
             // if (valueRegisterA % 100'000 == 0)
             // {
-            //     std::cout << valueRegisterA << ": ";
-            //     for (long long n : output)
-            //         std::cout << n << ' ';
-            //     std::cout << '\n';
+            // std::cout << valueRegisterA << ": ";
+            // for (long long n : output)
+            //     std::cout << n << ' ';
+            // std::cout << '\n';
             // }
         }
         // throw std::out_of_range("Failed to reach solution before the set number of loops.\n");
@@ -276,150 +481,21 @@ namespace aoc17b
         return 0;
     }
 
-    char getRegisterOutput(const std::vector<int>& program)
-    {
-        char reg {};
-        // we assume there is only one output per loop
-        for (size_t i{0}; i < program.size(); i + 2)
-        {
-            // find the instruction that prints the output
-            if (program.at(i) == 5)
-            {
-                if (program.at(i + 1) == 'A')
-                    return 'A';
-                else if (program.at(i + 1) == 'B')
-                    return 'B';
-                else if (program.at(i + 1) == 'C')
-                    return 'C';
-            }
-        }
-        throw std::out_of_range("Valid register not found for program output.\n");
-    }
-
-    std::pair<long long, long long> getReverseComboOperand(long long literalOperand, const std::pair<long long, long long>& registerA, const std::pair<long long, long long>& registerB, const std::pair<long long, long long>& registerC)
-    {
-        if (literalOperand < 4)
-            return {literalOperand, literalOperand};
-        else if (literalOperand == 4)
-            return registerA;
-        else if (literalOperand == 5)
-            return registerB;
-        else if (literalOperand == 6)
-            return registerC;
-        else if (literalOperand == 7)
-            throw std::invalid_argument("Invalid program: operand 7 reached.\n");
-        else
-            throw std::invalid_argument("Received unexpected operand.\n");
-    }
-
-    std::pair<long long, long long> getProgramLimits(const std::map<char, long long>& registers, const std::vector<int>& program)
-    {
-        // get bounds for output
-        std::pair<long long, long long> loops {getCopyProgramLimits(registers, program)};
-
-        // to reach end of program, need register A to be 0
-        // in last iteration, register A needs to start min 1 to max 7
-        std::pair<long long, long long> registerA {1, 7};
-        std::pair<long long, long long> registerB {};
-        std::pair<long long, long long> registerC {};
-
-        // find which register is the one that outputs
-        char registerOutput {getRegisterOutput(program)};
-        std::pair<long long, long long>* ptrOutput {};
-        if (registerOutput == 'A')
-            ptrOutput = &registerA;
-        else if (registerOutput == 'B')
-            ptrOutput = &registerB;
-        else if (registerOutput == 'C')
-            ptrOutput = &registerC;
-        
-        assert(ptrOutput && "Pointer has not been changed correctly and is still a null pointer.\n");
-
-        // need to collect outputs in reverse
-        // take program in reverse order
-        for (int i{static_cast<int>(program.size()) - 1}; i >= 0; --i)
-        {
-            std::cout << "outer " << i << '\n';
-            // we also need to run the program in reverse
-            for (int pointer{static_cast<int>(program.size()) - 1}; pointer > 0; pointer - 2)
-            {
-                std::cout << "inner " << pointer << '\n';
-                int literalOperand {program.at(pointer)};
-                std::pair<long long, long long> comboOperand {getReverseComboOperand(literalOperand, registerA, registerB, registerC)};
-                // opcode 0
-                if (program.at(pointer - 1) == 0)
-                {
-                    registerA.first *= std::pow(2, comboOperand.first);
-                    registerA.second = (registerA.second + 1) * std::pow(2, comboOperand.second) - 1;
-                }
-                // opcode 1
-                else if (program.at(pointer - 1) == 1)
-                {
-                    // XOR should work in reverse
-                    registerB.first ^= literalOperand;
-                    registerB.second ^= literalOperand;
-                }
-                // opcode 2
-                else if (program.at(pointer - 1) == 2)
-                {
-                    // having bounds may fall down e.g. here
-                    // do we need to do the inverse of modulo?
-                    // is it even possible / feasible to do that?
-                    registerB.first = comboOperand.first % 8;
-                    registerB.second = comboOperand.second % 8;
-                }
-                // we've identified register A values giving right loops
-                // so we don't care about this instruction
-                // // opcode 3 (exit)
-                // else if (program.at(pointer - 1) == 3)
-                //     {/* intentionally empty */}
-                // opcode 4
-                else if (program.at(pointer - 1) == 4)
-                {
-                    registerB.first ^= registerC.first;
-                    registerB.second ^= registerC.second;
-                }
-                // opcode 5
-                else if (program.at(pointer - 1) == 5)
-                {
-                    // ADD HERE
-                    // do we need to correct for output being off?
-                    // see previous comment about inverse of modulo
-                    if (ptrOutput->first % 8 != program.at(i))
-                    {
-                        ptrOutput->first += (ptrOutput->first % 8 - program.at(i));
-                    }
-                    if (ptrOutput->second % 8 != program.at(i))
-                    {
-                        ptrOutput->second += (ptrOutput->second % 8 - program.at(i));
-                    }
-                }
-                // opcode 6
-                else if (program.at(pointer - 1) == 6)
-                {
-                    registerB.first = registerA.first * std::pow(2, comboOperand.first);
-                    registerB.second = registerA.second * std::pow(2, comboOperand.second);
-                }
-                // opcode 7
-                else if (program.at(pointer - 1) == 7)
-                {
-                    registerC.first = registerA.first * std::pow(2, comboOperand.first);
-                    registerC.second = registerA.second * std::pow(2, comboOperand.second);
-                }
-            }
-        }
-        return registerA;
-    }
-
     template <std::size_t N>
-    long long parseAndGetCopyProgram(const std::array<std::string_view, N> lines)
+    RegisterInt parseAndGetCopyProgram(const std::array<std::string_view, N> lines)
     {
-        std::map<char, long long> registers {readRegisters<N>(lines)};
-        std::vector<int> program {readProgram<N>(lines)};
-        // std::pair<long long, long long> limits {getProgramLimits(registers, program)};
-        // std::cout << "limits: " << limits.first << ' ' << limits.second << '\n';
-        return findCopyProgram(registers, program);
-        // return 0;
+        Registers registers {readRegisters<N>(lines)};
+        Program program {readProgram<N>(lines)};
+
+        // find absolute limits for loops
+        Limits absoluteLimits {getCopyProgramLimits(registers, program)};
+        std::cout << "abs: " << absoluteLimits.first << ' ' << absoluteLimits.second << '\n';
+        // refine this further using how the output changes
+        Limits refinedLimits {getRefinedLimits(registers, program, absoluteLimits)};
+        std::cout << "ref: " << refinedLimits.first << ' ' << refinedLimits.second << '\n';
+
+        // return findCopyProgram(registers, program, refinedLimits);
+        return findCopyProgram(registers, program, refinedLimits);
     }
 }
 
