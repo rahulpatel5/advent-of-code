@@ -1,117 +1,90 @@
 #include "NetworkGraph.h"
-#include <vector>
 #include <set>
-#include <algorithm>
 #include <map>
 
-#include <iostream>
-#include "../../shared/Timer.h"
-
-int factorial(int num, std::map<int, int>& factorials)
+std::set<int> getSharedConnections(const std::set<int>& network, const std::map<int, std::set<int>>& adjacent, std::map<std::set<int>, std::set<int>>& shared)
 {
-    if (factorials.find(num) != factorials.end())
-        return factorials.at(num);
-    // we set the base case before, so just apply the rest
-    factorials[num] = num * factorial(num - 1, factorials);
-    return factorials[num];
-}
+    // if we've already run this network, add to the shared collection
+    if (shared.find(network) != shared.end())
+        return shared.at(network);
+    // if there's only one element in network, we can use adjacent
+    if (network.size() == 1)
+        return adjacent.at(*network.begin());
 
-int combinations(int num, std::map<int, int>& factorials)
-{
-    if (num == 2)
-        return 1;
-    // nCr = n! / (r! (n-r)!)
-    // hard-coding that there are 2 elements chosen per combination
-    return factorial(num, factorials) / factorial(2, factorials) / factorial(num - 2, factorials);
-}
-
-bool isEnoughEdges(const std::vector<int>& list, const std::map<int, std::set<int>>& adjacent, std::map<int, int>& factorials)
-{
-    int target {combinations(static_cast<int>(list.size()), factorials)};
-    int edges {0};
-    // std::cout << "for " << list.size() << ' ' << target << '\n';
-    for (auto indexOuter {list.begin()}; indexOuter != list.end(); ++indexOuter)
+    std::set<int> linked {};
+    for (int c : network)
     {
-        for (auto indexInner {std::next(indexOuter)}; indexInner != list.end(); ++indexInner)
+        if (linked.size() == 0)
+            linked = adjacent.at(c);
+        else
         {
-            if (adjacent.at(*indexOuter).find(*indexInner) != adjacent.at(*indexOuter).end())
-                ++edges;
+            for (auto it {linked.begin()}; it != linked.end(); )
+            {
+                if (adjacent.at(c).find(*it) == adjacent.at(c).end())
+                    it = linked.erase(it);
+                else
+                    ++it;
+                // also handle if linked has become empty
+                if (linked.size() == 0)
+                    break;
+            }
+            // need to handle if we have no shared elements left
+            if (linked.size() == 0)
+                break;
         }
-        // if (count < target)
-        //     return false;
     }
-    return edges >= target;
+    shared[network] = linked;
+    return linked;
 }
 
-std::vector<int> findLongLoop(int start, int maxIterations, const std::map<int, std::set<int>>& adjacent, std::map<int, int>& factorials)
+std::set<int> findLongLoop(int start, int maxIterations, const std::map<int, std::set<int>>& adjacent, std::map<std::set<int>, std::set<int>>& shared)
 {
-    std::vector<int> longLoop {};
+    std::set<int> longLoop {};
 
-    std::set<std::vector<int>> current {};
+    std::set<std::set<int>> current {};
     current.insert({start});
     for (int i{1}; i <= maxIterations; ++i)
     {
         if (current.size() == 0)
             break;
-        // std::cout << '\t' << i << ' ' << current.size() << ' ' << longLoop.size() << '\n';
-        std::set<std::vector<int>> next {};
-        for (std::vector<int> list : current)
+        std::set<std::set<int>> next {};
+        for (const std::set<int>& list : current)
         {
-            for (int connection : adjacent.at(list.back()))
+            // this happens to avoid duplicate computers
+            std::set<int> joiners {getSharedConnections(list, adjacent, shared)};
+            // if no more computers to add, we're at max size
+            if (joiners.size() == 0 && list.size() > longLoop.size())
+                longLoop = list;
+
+            for (int join : joiners)
             {
-                if (connection == start)
-                {
-                    if (list.size() > longLoop.size())
-                        longLoop = list;
-                }
-                // check if new vertex has an edge with the start
-                // if not, we can skip to save time
-                else if (adjacent.at(start).find(connection) == adjacent.at(start).end())
-                    continue;
-                // add linked vertex, if not already visited
-                else if (std::find(list.begin(), list.end(), connection) == list.end())
-                {
-                    std::vector<int> temp {list};
-                    temp.push_back(connection);
-                    if (isEnoughEdges(temp, adjacent, factorials))
-                        next.insert(temp);
-                }
+                std::set<int> newNetwork {list};
+                newNetwork.insert(join);
+                next.insert(newNetwork);
             }
         }
-        current = next;
+        current = std::move(next);
     }
     
     return longLoop;
 }
 
-std::vector<int> NetworkGraph::getLongestLoop() const
+std::set<int> NetworkGraph::getLongestLoop() const
 {
-    std::vector<int> longest {};
+    std::set<int> longest {};
     // since all computers must be connected in the network
     // the max is the number of connections for one computer
-    int maxIter {static_cast<int>(m_adjacent.at(0).size())};
+    // add 1 as we may need this to make sure we get full loops
+    int maxIter {static_cast<int>(m_adjacent.at(0).size() + 1)};
 
     // collect shared connections between two computers (memoisation)
-    // here, std::pair should always have the first element as smaller
-    std::map<std::pair<int, int>, std::set<int>> shared {};
+    std::map<std::set<int>, std::set<int>> shared {};
 
-    // collect factorials
-    std::map<int, int> factorials {};
-    // set base case
-    factorials[1] = 1;
-    // std::cout << "max: " << maxIter << '\n';
-
-    for (int v{0}; v < maxIter; ++v)
+    for (int v{0}; v < static_cast<int>(m_vertices - (longest.size() - 1)); ++v)
     {
-        // std::cout << "loop " << v << '\n';
-        std::vector<int> loop {findLongLoop(v, maxIter, m_adjacent, factorials)};
-        // std::cout << v << ": " << loop.size() << '\n';
+        std::set<int> loop {findLongLoop(v, maxIter, m_adjacent, shared)};
         if (loop.size() > longest.size())
             longest = loop;
-        // std::cout << v << ": ";
-        // for (int n : longest)
-        //     std::cout << n << ' ';
-        // std::cout << '\n';
     }
 
     return longest;

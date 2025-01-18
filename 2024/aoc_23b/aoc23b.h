@@ -6,12 +6,8 @@
 #include <string>
 #include <vector>
 #include <set>
-#include <algorithm>
 #include <map>
 #include "NetworkGraph.h"
-
-#include <iostream>
-#include "../../shared/Timer.h"
 
 /*
 read all connection pairs
@@ -45,6 +41,15 @@ seems promising
 another thing that could help is setting the max iterations to links
 assuming that all computers in the network must be connected
 this reduces the total number of loops that are needed
+
+we're iterating over every connection we can get
+however, can we instead use the fact that all computers in a network join
+we can look at adjacent lists and see which points are shared
+can we use that to reduce the number of loops we have?
+
+even better, since all computers need to be connected
+can we look at which elements are shared between each current set
+could also use memoisation to store shared connections between two points
 */
 
 namespace aoc23b
@@ -52,16 +57,13 @@ namespace aoc23b
     using Password = std::string;
     using Computer = std::string;
     using Computers = std::vector<Computer>;
-    using ComputersList = std::vector<Computers>;
     using UniqueComputers = std::set<Computer>;
-    using ConnectDict = std::map<Computer, Computers>;
 
     using Connection = std::pair<Computer, Computer>;
     using Connections = std::vector<Connection>;
-    using Networks = std::vector<Connections>;
-    using UniqueConnections = std::set<Connection>;
 
     using IntComputer = int;
+    using IntComputers = std::vector<IntComputer>;
     using StrToIntMap = std::map<std::string, IntComputer>;
     using IntToStrMap = std::map<IntComputer, std::string>;
     using IntConnection = std::pair<IntComputer, IntComputer>;
@@ -106,8 +108,7 @@ namespace aoc23b
         return intConnections;
     }
 
-    // UniqueIntComputers findLargestNetwork(const NetworkGraph& graph)
-    std::list<int> findLargestNetwork(const NetworkGraph& graph)
+    UniqueIntComputers findLargestNetwork(const NetworkGraph& graph)
     {
         return graph.getLongestLoop();
     }
@@ -143,8 +144,6 @@ namespace aoc23b
         IntToStrMap intToString {};
         computerConversion(stringToInt, intToString, uniqueSet);
         IntConnections connectionsInt {getIntConnections(connectionsStr, stringToInt)};
-        // for (auto [key, value] : intToString)
-        //     std::cout << key << ": " << value << '\n';
 
         NetworkGraph graph(uniqueSet.size());
         // add edges
@@ -154,14 +153,7 @@ namespace aoc23b
             graph.addEdge(i.second, i.first);
         }
 
-        // graph.printGraph();
-
-        // UniqueIntComputers largestNetwork {findLargestNetwork(graph)};
-        std::list<int> largestNetworkInt {findLargestNetwork(graph)};
-        // for (int n : largestNetworkInt)
-        //     std::cout << n << ' ';
-        // std::cout << '\n';
-        UniqueIntComputers largestNetwork {largestNetworkInt.begin(), largestNetworkInt.end()};
+        UniqueIntComputers largestNetwork {findLargestNetwork(graph)};
         return getPassword(largestNetwork, intToString);
     }
 }

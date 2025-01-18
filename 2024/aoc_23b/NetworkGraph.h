@@ -1,9 +1,8 @@
 #ifndef NETWORKGRAPH_H
 #define NETWORKGRAPH_H
 
-#include <list>
-
-#include <iostream>
+#include <map>
+#include <set>
 
 /*
 adapts code from:
@@ -14,28 +13,17 @@ class NetworkGraph
 {
 private:
     int m_vertices;
-    std::list<int>* m_adjacent;
+    std::map<int, std::set<int>> m_adjacent;
 
 public:
     NetworkGraph(int vertices)
         : m_vertices {vertices}
-        , m_adjacent {new std::list<int>[vertices]}
+        , m_adjacent {}
     {}
 
-    void addEdge(int a, int b) { m_adjacent[a].push_back(b); }
+    void addEdge(int a, int b) { m_adjacent[a].insert(b); }
 
-    std::list<int> getLongestLoop() const;
-
-    // void printGraph()
-    // {
-    //     for (int v{0}; v < m_vertices; ++v)
-    //     {
-    //         std::cout << v << ": ";
-    //         for (int e : m_adjacent[v])
-    //             std::cout << e << ' ';
-    //         std::cout << '\n';
-    //     }
-    // }
+    std::set<int> getLongestLoop() const;
 };
 
 #endif // NETWORKGRAPH_H

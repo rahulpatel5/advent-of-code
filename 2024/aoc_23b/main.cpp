@@ -48,8 +48,8 @@ td-yn
     constexpr std::size_t testLength {StringUtils::length(testInput)};
     constexpr std::array<std::string_view, testLength> testLines {StringUtils::split<testLength>(testInput)};
     
-    std::string_view password {aoc23b::parseAndGetPassword<testLength>(testLines)};
-    // std::string_view password {aoc23b::parseAndGetPassword<length>(lines)};
+    // std::string_view password {aoc23b::parseAndGetPassword<testLength>(testLines)};
+    std::string_view password {aoc23b::parseAndGetPassword<length>(lines)};
     std::cout << "password of LAN party: " << password << '\n';
     
     auto stopTime {std::chrono::high_resolution_clock::now()};
