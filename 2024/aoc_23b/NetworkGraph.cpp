@@ -1,5 +1,4 @@
 #include "NetworkGraph.h"
-#include <list>
 #include <vector>
 #include <set>
 #include <algorithm>
@@ -26,7 +25,7 @@ int combinations(int num, std::map<int, int>& factorials)
     return factorial(num, factorials) / factorial(2, factorials) / factorial(num - 2, factorials);
 }
 
-bool isEnoughEdges(const std::list<int>& list, const std::list<int>* adjacent, std::map<int, int>& factorials)
+bool isEnoughEdges(const std::vector<int>& list, const std::map<int, std::set<int>>& adjacent, std::map<int, int>& factorials)
 {
     int target {combinations(static_cast<int>(list.size()), factorials)};
     int edges {0};
@@ -35,7 +34,7 @@ bool isEnoughEdges(const std::list<int>& list, const std::list<int>* adjacent, s
     {
         for (auto indexInner {std::next(indexOuter)}; indexInner != list.end(); ++indexInner)
         {
-            if (std::find(adjacent[*indexOuter].begin(), adjacent[*indexOuter].end(), *indexInner) != adjacent[*indexOuter].end())
+            if (adjacent.at(*indexOuter).find(*indexInner) != adjacent.at(*indexOuter).end())
                 ++edges;
         }
         // if (count < target)
@@ -44,19 +43,21 @@ bool isEnoughEdges(const std::list<int>& list, const std::list<int>* adjacent, s
     return edges >= target;
 }
 
-std::list<int> findLongLoop(int start, int maxIterations, const std::list<int>* adjacent, std::map<int, int>& factorials)
+std::vector<int> findLongLoop(int start, int maxIterations, const std::map<int, std::set<int>>& adjacent, std::map<int, int>& factorials)
 {
-    std::list<int> longLoop {};
+    std::vector<int> longLoop {};
 
-    std::set<std::list<int>> current {};
+    std::set<std::vector<int>> current {};
     current.insert({start});
     for (int i{1}; i <= maxIterations; ++i)
     {
+        if (current.size() == 0)
+            break;
         // std::cout << '\t' << i << ' ' << current.size() << ' ' << longLoop.size() << '\n';
-        std::set<std::list<int>> next {};
-        for (std::list<int> list : current)
+        std::set<std::vector<int>> next {};
+        for (std::vector<int> list : current)
         {
-            for (int connection : adjacent[list.back()])
+            for (int connection : adjacent.at(list.back()))
             {
                 if (connection == start)
                 {
@@ -65,12 +66,12 @@ std::list<int> findLongLoop(int start, int maxIterations, const std::list<int>* 
                 }
                 // check if new vertex has an edge with the start
                 // if not, we can skip to save time
-                else if (std::find(adjacent[start].begin(), adjacent[start].end(), connection) == adjacent[start].end())
+                else if (adjacent.at(start).find(connection) == adjacent.at(start).end())
                     continue;
                 // add linked vertex, if not already visited
                 else if (std::find(list.begin(), list.end(), connection) == list.end())
                 {
-                    std::list<int> temp {list};
+                    std::vector<int> temp {list};
                     temp.push_back(connection);
                     if (isEnoughEdges(temp, adjacent, factorials))
                         next.insert(temp);
@@ -83,10 +84,18 @@ std::list<int> findLongLoop(int start, int maxIterations, const std::list<int>* 
     return longLoop;
 }
 
-std::list<int> NetworkGraph::getLongestLoop() const
+std::vector<int> NetworkGraph::getLongestLoop() const
 {
-    std::list<int> longest {};
-    int maxIter {static_cast<int>(m_adjacent[0].size())};
+    std::vector<int> longest {};
+    // since all computers must be connected in the network
+    // the max is the number of connections for one computer
+    int maxIter {static_cast<int>(m_adjacent.at(0).size())};
+
+    // collect shared connections between two computers (memoisation)
+    // here, std::pair should always have the first element as smaller
+    std::map<std::pair<int, int>, std::set<int>> shared {};
+
+    // collect factorials
     std::map<int, int> factorials {};
     // set base case
     factorials[1] = 1;
@@ -95,7 +104,7 @@ std::list<int> NetworkGraph::getLongestLoop() const
     for (int v{0}; v < maxIter; ++v)
     {
         // std::cout << "loop " << v << '\n';
-        std::list<int> loop {findLongLoop(v, maxIter, m_adjacent, factorials)};
+        std::vector<int> loop {findLongLoop(v, maxIter, m_adjacent, factorials)};
         // std::cout << v << ": " << loop.size() << '\n';
         if (loop.size() > longest.size())
             longest = loop;
