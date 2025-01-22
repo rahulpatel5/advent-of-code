@@ -11,6 +11,7 @@
 #include <functional>
 #include <set>
 #include <ranges>
+#include "WireGraph.h"
 
 #include <iostream>
 #include "../../shared/Timer.h"
@@ -95,74 +96,151 @@ does it make sense to only look at wires with two inputs?
 e.g. as a test to see if it helps the script to run to the end
 
 IDEAS TO TRY:
-    change wires and gates to using int, with a map from str to int and v-v
+    change wires to using int, with a map from str to int and vice-versa
+this seems to have sped up the code (3x?)
+think the rest requires being smarter about choosing options
+can we use gate info to identify what needs to change?
+e.g. if we have AND and 1 value is 0, we know that needs to change
+or if both values are 0, then both need to change
+
+check if it would speed up to collect x, y, z keys in a map
+could slow down to generate strings every time
+
+optimising is not achieving much
+IDEA TO TRY:
+    set up a unidirectional graph with wires as vertices
+    have edges point from inputs to outputs
+    means multiple edges per vertex
+    could then work backwards from outputs that are off
+    and see which wires (vertices could change)
+    could use weighting (int) to show if 1 or 0
+    or might need to use that for AND/OR/XOR?
 */
 
 namespace aoc24b
 {
     using GateInt = unsigned long long;
-    using Wire = std::string;
+    using WireStr = std::string;
+    using Wire = std::int16_t;
+
+    using StrToIndex = std::map<WireStr, Wire>;
+    using IndexToStr = std::map<Wire, WireStr>;
+
     using Wires = std::vector<Wire>;
-    using WireValue = int;
+    using UniqueWires = std::set<Wire>;
+    using WireValue = std::int16_t;
     using WireMap = std::map<Wire, WireValue>;
-    using Input = std::string;
-    using Output = std::string;
-    using Operator = std::string;
-    // Gate consists of Input, Output and Operator
-    // but too much of a faff to add all those
-    // hard-coding to array length 4. Could set up more flexibly
-    using Gate = std::array<Input, 4>;
+
+    using Input = Wire;
+    using Output = Wire;
+    using Operator = Wire;
+    using Gate = std::array<Wire, 4>;
     using Gates = std::vector<Gate>;
+
     // from looking at puzzle
     constexpr int bitSize {48};
     using Bits = std::bitset<bitSize>;
     using CheckList = std::vector<bool>;
-    using GateStart = std::string;
+    using GateStart = Wire;
     // swapping pairs
     using SwappedPair = std::pair<Wire, Wire>;
     using SwappedWires = std::vector<SwappedPair>;
-    using UniqueWires = std::set<Wire>;
     using Combination = std::vector<SwappedPair>;
     using Combinations = std::vector<Combination>;
 
-    using GateBits = std::vector<int>;
-    using UniqueGateBits = std::set<int>;
+    using GateBits = std::vector<std::int16_t>;
+    using UniqueGateBits = std::set<std::int16_t>;
     // associations between gates - values 1-2: inputs, value 3: operator
-    using Associations = std::map<Output, std::array<Input, 3>>;
+    using Associations = std::map<Output, std::array<Wire, 3>>;
     // associations from one input to another input, operand and output
-    using GateData = std::array<Output, 3>;
+    using GateData = std::array<Wire, 3>;
     // associations from each input to rest of gate data
     using MultiAssociations = std::map<Input, GateData>;
     using UniqueInputs = std::set<Input>;
     using OutputToInputs = std::map<Output, UniqueInputs>;
 
-    using WireIndex = std::int16_t;
-    using WireIndexes = std::vector<WireIndex>;
-    using UniqueWireIndex = std::set<WireIndex>;
-    using WireToIndex = std::map<Wire, WireIndex>;
-    using IndexToWire = std::map<WireIndex, Wire>;
+    using Power = unsigned long long;
+    using Powers = std::vector<Power>;
+
+    // set values for AND, OR, and XOR
+    Wire operAND {-1};
+    Wire operOR {-2};
+    Wire operXOR {-3};
 
     template <std::size_t N>
-    void addWiresAndGates(WireMap& wires, Gates& gates, Associations& associations, MultiAssociations& multiAssoc, const std::array<std::string_view, N>& lines)
+    void addWiresAndGates(WireMap& wires, Gates& gates, Associations& associations, MultiAssociations& multiAssoc, const std::array<std::string_view, N>& lines, StrToIndex& strToIndexMap, IndexToStr& indexToStrMap)
     {
+        Wire wireCount {0};
         for (std::string_view line : lines)
         {
             if (line.find(':') != std::string_view::npos)
             {
                 size_t colon {line.find(':')};
-                Wire wire {line.substr(0, colon)};
-                WireValue val {std::stoi(std::string(line.substr(colon + 2)))};
-                wires[wire] = val;
+                WireStr wire {line.substr(0, colon)};
+                WireValue val {static_cast<Wire>(std::stoi(std::string(line.substr(colon + 2))))};
+                if (strToIndexMap.find(wire) != strToIndexMap.end())
+                    wires[strToIndexMap.at(wire)] = val;
+                else
+                {
+                    strToIndexMap[wire] = wireCount;
+                    indexToStrMap[wireCount] = wire;
+                    wires[wireCount] = val;
+                    ++wireCount;
+                }
             }
             else if (line.find("->") != std::string_view::npos)
             {
                 size_t firstSpace {line.find(' ')};
                 size_t secondSpace {line.find(' ', firstSpace + 1)};
                 size_t equals {line.find("->")};
-                Input input1 {line.substr(0, firstSpace)};
-                Operator oper {line.substr(firstSpace + 1, secondSpace - (firstSpace + 1))};
-                Input input2 {line.substr(secondSpace + 1, (equals - 1) - (secondSpace + 1))};
-                Output output {line.substr(equals + 3)};
+
+                WireStr input1Str {line.substr(0, firstSpace)};
+                Input input1;
+                if (strToIndexMap.find(input1Str) != strToIndexMap.end())
+                    input1 = strToIndexMap.at(input1Str);
+                else
+                {
+                    strToIndexMap[input1Str] = wireCount;
+                    indexToStrMap[wireCount] = input1Str;
+                    input1 = wireCount;
+                    ++wireCount;
+                }
+                WireStr operStr {line.substr(firstSpace + 1, secondSpace - (firstSpace + 1))};
+                Operator oper;
+                if (strToIndexMap.find(operStr) != strToIndexMap.end())
+                    oper = strToIndexMap.at(operStr);
+                else
+                {
+                    strToIndexMap[operStr] = wireCount;
+                    indexToStrMap[wireCount] = operStr;
+                    oper = wireCount;
+                    ++wireCount;
+                }
+
+                WireStr input2Str {line.substr(secondSpace + 1, (equals - 1) - (secondSpace + 1))};
+                Input input2;
+                if (strToIndexMap.find(input2Str) != strToIndexMap.end())
+                    input2 = strToIndexMap.at(input2Str);
+                else
+                {
+                    strToIndexMap[input2Str] = wireCount;
+                    indexToStrMap[wireCount] = input2Str;
+                    input2 = wireCount;
+                    ++wireCount;
+                }
+
+                WireStr outputStr {line.substr(equals + 3)};
+                Output output;
+                if (strToIndexMap.find(outputStr) != strToIndexMap.end())
+                    output = strToIndexMap.at(outputStr);
+                else
+                {
+                    strToIndexMap[outputStr] = wireCount;
+                    indexToStrMap[wireCount] = outputStr;
+                    output = wireCount;
+                    ++wireCount;
+                }
+
                 gates.push_back({oper, input1, input2, output});
                 associations[output] = {input1, input2, oper};
                 multiAssoc[input1] = {oper, input2, output};
@@ -197,7 +275,7 @@ namespace aoc24b
                         continue;
                     for (const Input& nextInput : associations.at(input))
                     {
-                        if (nextInput == "OR" || nextInput == "AND" || nextInput == "XOR")
+                        if (nextInput == operAND || nextInput == operOR || nextInput == operXOR)
                             continue;
                         map[key].insert(nextInput);
                         next.insert(nextInput);
@@ -209,14 +287,52 @@ namespace aoc24b
         return map;
     }
 
+    void collectXYZWires(Wires& xWires, Wires& yWires, Wires& zWires, const StrToIndex& strToIndexMap)
+    {
+        for (int i{0}; i < bitSize; ++i)
+        {
+            WireStr xKey {"x"};
+            WireStr yKey {"y"};
+            WireStr zKey {"z"};
+            WireStr postFix;
+            if (i < 10)
+            {
+                postFix.append("0");
+            }
+            postFix.append(std::to_string(i));
+            xKey.append(postFix);
+            yKey.append(postFix);
+            zKey.append(postFix);
+
+            if (strToIndexMap.find(xKey) != strToIndexMap.end())
+                xWires.push_back(strToIndexMap.at(xKey));
+            if (strToIndexMap.find(yKey) != strToIndexMap.end())
+                yWires.push_back(strToIndexMap.at(yKey));
+            if (strToIndexMap.find(zKey) != strToIndexMap.end())
+                zWires.push_back(strToIndexMap.at(zKey));
+        }
+    }
+
+    Powers getPowersOfTwo()
+    {
+        Powers powers {};
+        Power pow {1};
+        for (int i{0}; i < bitSize; ++i)
+        {
+            powers.push_back(pow);
+            pow *= 2;
+        }
+        return powers;
+    }
+
     // first pass at function, before adding more complexity
     GateInt performOperation(const Gate& gate, const WireMap& wires)
     {
-        if (gate.at(0) == "AND")
+        if (gate.at(0) == operAND)
             return wires.at(gate.at(1)) & wires.at(gate.at(2));
-        else if (gate.at(0) == "OR")
+        else if (gate.at(0) == operOR)
             return wires.at(gate.at(1)) | wires.at(gate.at(2));
-        else if (gate.at(0) == "XOR")
+        else if (gate.at(0) == operXOR)
             return wires.at(gate.at(1)) ^ wires.at(gate.at(2));
         else
             throw std::invalid_argument("Given non-valid operator.\n");
@@ -248,26 +364,24 @@ namespace aoc24b
         }
     }
 
-    GateInt getGateInt(const WireMap& wires, const GateStart& start)
+    GateInt getGateInt(const WireMap& wires, const Wires& keyWires, const Powers& powersOfTwo)
     {
-        Bits binary {};
-        for (int i{0}; i < bitSize; ++i)
+        // Bits binary {};
+        // int index {0};
+        // for (Wire w : keyWires)
+        // {
+        //     Bits bitmask {};
+        //     bitmask[index] = wires.at(w);
+        //     binary ^= bitmask;
+        //     ++index;
+        // }
+        // return binary.to_ullong();
+        GateInt gateInt {0};
+        for (size_t i{0}; i < keyWires.size(); ++i)
         {
-            Wire key {start};
-            if (i < 10)
-            {
-                key.append("0");
-                key.append(std::to_string(i));
-            }
-            else
-                key.append(std::to_string(i));
-            if (wires.find(key) == wires.end())
-                break;
-            Bits bitmask {};
-            bitmask[i] = wires.at(key);
-            binary ^= bitmask;
+            gateInt += wires.at(keyWires.at(i)) * powersOfTwo.at(i);
         }
-        return binary.to_ullong();
+        return gateInt;
     }
 
     Combinations getCombinations(const Wires& swapGates, const WireMap& wires, const WireMap& origWires)
@@ -345,17 +459,17 @@ namespace aoc24b
         return gates;
     }
 
-    SwappedWires swapGatesAndOperate(const Gates& gates, const WireMap& wires, const Wires& swapZGates, const Wires& swapXYGates, const MultiAssociations& multiAssoc, const WireMap& origWires)
+    SwappedWires swapGatesAndOperate(const Gates& gates, const WireMap& wires, const Wires& swapZGates, const Wires& swapXYGates, const MultiAssociations& multiAssoc, const WireMap& origWires, const Wires& xWires, const Wires& yWires, const Wires& zWires, const Powers& powersOfTwo)
     {
         // get combinations of swapped wires
         // for z gates
-        // Combinations combinationsZ {getCombinations(swapZGates, wires, origWires)};
+        Combinations combinationsZ {getCombinations(swapZGates, wires, origWires)};
         // for x and y gates
-        Combinations combinationsXY {getCombinations(swapXYGates, wires, origWires)};
+        // Combinations combinationsXY {getCombinations(swapXYGates, wires, origWires)};
         // combine the ... combinations
         Combinations combinations {};
-        // combinations.insert(combinations.end(), combinationsZ.begin(), combinationsZ.end());
-        combinations.insert(combinations.end(), combinationsXY.begin(), combinationsXY.end());
+        combinations.insert(combinations.end(), combinationsZ.begin(), combinationsZ.end());
+        // combinations.insert(combinations.end(), combinationsXY.begin(), combinationsXY.end());
 
         // std::cout << "combo: " << combinations.size() << '\n';
         // how to efficiently swap pairs?
@@ -422,23 +536,24 @@ namespace aoc24b
             WireMap copyWires {wires};
             operateOnGates(copyGates, copyWires);
             
-            GateInt xGates {getGateInt(copyWires, "x")};
-            GateInt yGates {getGateInt(copyWires, "y")};
-            GateInt zGates {getGateInt(copyWires, "z")};
-            std::cout << xGates + yGates << ' ' << zGates << '\n';
+            GateInt xGates {getGateInt(copyWires, xWires, powersOfTwo)};
+            GateInt yGates {getGateInt(copyWires, yWires, powersOfTwo)};
+            GateInt zGates {getGateInt(copyWires, zWires, powersOfTwo)};
+            // std::cout << xGates + yGates << ' ' << zGates << '\n';
             if (xGates + yGates == zGates)
                 return combination;
         }
-        throw std::invalid_argument("Failed to find a combination of swaps that adds up correctly.\n");
+        return {{1, 2}, {3, 4}, {5, 6}, {7, 8}};
+        throw std::out_of_range("Failed to find a combination of swaps that adds up correctly.\n");
     }
 
-    Wires getOptionsForSwapping(const GateBits& diff, const Associations& associations, const WireMap& wires, const Wire& z)
+    Wires getOptionsForSwapping(const GateBits& diff, const Associations& associations, const WireMap& wires, const WireStr& z, const StrToIndex& strToIndexMap)
     {
         Wires swaps {};
         for (int gate : diff)
         {
             // get z gate
-            Wire zKey {z};
+            WireStr zKey {z};
             if (gate < 10)
             {
                 zKey.append("0");
@@ -447,7 +562,8 @@ namespace aoc24b
             else
                 zKey.append(std::to_string(gate));
             
-            swaps.push_back(zKey);
+            // std::cout << "0 " << zKey << '\n';
+            swaps.push_back(strToIndexMap.at(zKey));
 
             continue;
             
@@ -461,11 +577,11 @@ namespace aoc24b
             //     std::cout << a << ' ';
             // }
             // std::cout << '\n';
-            if (associations.at(zKey)[2] == "XOR")
+            if (associations.at(strToIndexMap.at(zKey))[2] == operXOR)
             {
                 // std::cout << "b\n";
-                swaps.push_back(associations.at(zKey)[0]);
-                swaps.push_back(associations.at(zKey)[1]);
+                swaps.push_back(associations.at(strToIndexMap.at(zKey))[0]);
+                swaps.push_back(associations.at(strToIndexMap.at(zKey))[1]);
             }
             // if we have AND or OR, change inputs that don't match target
             else
@@ -473,17 +589,17 @@ namespace aoc24b
                 // we've set up diff to collect either where z = 0 or 1
                 // note this may miss wires that change by other inputs
                 // std::cout << "c\n";
-                WireValue target {wires.at(zKey)};
-                if (wires.at(associations.at(zKey)[0]) != target)
-                    swaps.push_back(associations.at(zKey)[0]);
-                if (wires.at(associations.at(zKey)[1]) != target)
-                    swaps.push_back(associations.at(zKey)[1]);
+                WireValue target {wires.at(strToIndexMap.at(zKey))};
+                if (wires.at(associations.at(strToIndexMap.at(zKey))[0]) != target)
+                    swaps.push_back(associations.at(strToIndexMap.at(zKey))[0]);
+                if (wires.at(associations.at(strToIndexMap.at(zKey))[1]) != target)
+                    swaps.push_back(associations.at(strToIndexMap.at(zKey))[1]);
             }
         }
         return swaps;
     }
 
-    Wire sortAndCombineWires(const SwappedWires& swapped)
+    WireStr sortAndCombineWires(const SwappedWires& swapped, const IndexToStr& indexToStrMap)
     {
         UniqueWires wires {};
         for (const SwappedPair& pair : swapped)
@@ -496,28 +612,41 @@ namespace aoc24b
             throw std::invalid_argument("Final collection does not have the expected 8 wires.\n");
 
         bool isFirstLoop {true};
-        Wire final;
+        WireStr final;
         for (const Wire& wire : wires)
         {
             if (!isFirstLoop)
             {
                 final.append(",");
             }
-            final.append(wire);
+            final.append(indexToStrMap.at(wire));
             isFirstLoop = false;
         }
         return final;
     }
 
     template <std::size_t N>
-    Wire parseAndGetSwappedWires(const std::array<std::string_view, N>& lines)
+    WireStr parseAndGetSwappedWires(const std::array<std::string_view, N>& lines)
     {
+        // store wires as int (int_16t), to save space/time
+        // we'll need maps to convert back and forth
+        StrToIndex strToIndexMap {};
+        IndexToStr indexToStrMap {};
+        // let's store AND, OR, and XOR as negative indexes
+        // this avoids them getting in the way of the wires
+        strToIndexMap["AND"] = operAND;
+        strToIndexMap["OR"] = operOR;
+        strToIndexMap["XOR"] = operXOR;
+        indexToStrMap[operAND] = "AND";
+        indexToStrMap[operOR] = "OR";
+        indexToStrMap[operXOR] = "XOR";
+
         WireMap wires {};
         Gates gates {};
         Associations associations {};
         MultiAssociations multiAssoc {};
         // note: multiAssoc won't contain z gates since not present yet
-        addWiresAndGates<N>(wires, gates, associations, multiAssoc, lines);
+        addWiresAndGates<N>(wires, gates, associations, multiAssoc, lines, strToIndexMap, indexToStrMap);
 
         // UniqueWires unique {};
         // for (const auto& [key, value] : wires)
@@ -547,9 +676,19 @@ namespace aoc24b
         WireMap origWires {wires};
         Gates origGates {gates};
         operateOnGates(origGates, origWires);
-        GateInt origXGates {getGateInt(origWires, "x")};
-        GateInt origYGates {getGateInt(origWires, "y")};
-        GateInt origZGates {getGateInt(origWires, "z")};
+
+        // we can save time by collecting x, y and z wires
+        // string manipulation is costing a bit of time
+        Wires xWires {};
+        Wires yWires {};
+        Wires zWires {};
+        collectXYZWires(xWires, yWires, zWires, strToIndexMap);
+        // also collect powers of 2
+        Powers powersOfTwo {getPowersOfTwo()};
+
+        GateInt origXGates {getGateInt(origWires, xWires, powersOfTwo)};
+        GateInt origYGates {getGateInt(origWires, yWires, powersOfTwo)};
+        GateInt origZGates {getGateInt(origWires, zWires, powersOfTwo)};
         std::cout << "orig: " << (origXGates + origYGates) << " = " << origZGates << '\n';
 
         // compare the sum of x and y vs z
@@ -573,7 +712,7 @@ namespace aoc24b
         GateBits differentBits {uniqueDiff.begin(), uniqueDiff.end()};
 
         // now we find possible wires to swap connected to z gates
-        Wires gateZSwapOptions {getOptionsForSwapping(differentBits, associations, origWires, "z")};
+        Wires gateZSwapOptions {getOptionsForSwapping(differentBits, associations, origWires, "z", strToIndexMap)};
 
         // let's find possible wires connected to x or y gates
         UniqueWires gateXYSwaps {};
@@ -586,25 +725,25 @@ namespace aoc24b
             for (int b : differentBits)
             {
                 // bit wasteful to set these strings (Wire) up each time
-                Wire postFix;
+                WireStr postFix;
                 if (b < 10)
                     postFix.append("0");
                 postFix.append(std::to_string(b));
                 
-                Wire xKey {"x"};
+                WireStr xKey {"x"};
                 xKey.append(postFix);
-                Wire yKey {"y"};
+                WireStr yKey {"y"};
                 yKey.append(postFix);
 
-                gateXYSwaps.insert(xKey);
-                gateXYSwaps.insert(yKey);
+                gateXYSwaps.insert(strToIndexMap.at(xKey));
+                gateXYSwaps.insert(strToIndexMap.at(yKey));
 
                 continue;
 
-                if (values.find(xKey) != values.end())
-                    gateXYSwaps.insert(key);
-                if (values.find(yKey) != values.end())
-                    gateXYSwaps.insert(key);
+                if (values.find(strToIndexMap.at(xKey)) != values.end())
+                    gateXYSwaps.insert(strToIndexMap.at(xKey));
+                if (values.find(strToIndexMap.at(yKey)) != values.end())
+                    gateXYSwaps.insert(strToIndexMap.at(yKey));
             }
         }
         Wires gateXYSwapOptions {gateXYSwaps.begin(), gateXYSwaps.end()};
@@ -626,18 +765,19 @@ namespace aoc24b
         //     else
         //         std::cout << "0\n";
         // }
-        std::cout << "z swap:  ";
-        for (const Wire& swap : gateZSwapOptions)
-            std::cout << swap << ' ';
-        std::cout << '\n';
-        std::cout << "xy swap: ";
-        for (const Wire& swap : gateXYSwapOptions)
-            std::cout << swap << ' ';
-        std::cout << '\n';
+        // std::cout << "z swap:  ";
+        // for (const Wire& swap : gateZSwapOptions)
+        //     std::cout << swap << ' ';
+        // std::cout << '\n';
+        // std::cout << "xy swap: ";
+        // for (const Wire& swap : gateXYSwapOptions)
+        //     std::cout << swap << ' ';
+        // std::cout << '\n';
+        std::cout << "z swap: " << gateZSwapOptions.size() << '\n';
+        std::cout << "xy swap: " << gateXYSwapOptions.size() << '\n';
 
-        // std::cout << "2\n";
-        SwappedWires swappedWires {swapGatesAndOperate(gates, wires, gateZSwapOptions, gateXYSwapOptions, multiAssoc, origWires)};
-        return sortAndCombineWires(swappedWires);
+        SwappedWires swappedWires {swapGatesAndOperate(gates, wires, gateZSwapOptions, gateXYSwapOptions, multiAssoc, origWires, xWires, yWires, zWires, powersOfTwo)};
+        return sortAndCombineWires(swappedWires, indexToStrMap);
         // return "";
     }
 }
