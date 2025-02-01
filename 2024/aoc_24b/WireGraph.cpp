@@ -81,7 +81,9 @@ void WireGraph::swapNodes(std::int16_t a, std::int16_t b)
     // if we have nodes that are inputs only, handle differently
     if (hasNoInput(a) && hasNoInput(b))
     {
-        //
+        // don't know what should happen here
+        // try swapping values only
+        std::swap(m_wires[a]->m_value, m_wires[b]->m_value);
     }
     else if (!hasNoInput(a) && !hasNoInput(b))
     {

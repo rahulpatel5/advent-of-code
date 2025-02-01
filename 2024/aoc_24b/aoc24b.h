@@ -11,6 +11,7 @@
 #include <functional>
 #include <set>
 #include <ranges>
+#include <cassert>
 #include "WireGraph.h"
 
 #include <iostream>
@@ -99,6 +100,10 @@ still wrong
 seen that the puzzle isn't about adding specific x and y values
 it's about the system being set up to add any numbers correctly
 might need to scrap the current code and start again from scratch
+
+could try setting up a test with different x and y values
+if the swaps meet the tests, then we can try that as a solution
+leave a complete code re-work to another time (assuming the above works)
 */
 
 namespace aoc24b
@@ -140,11 +145,12 @@ namespace aoc24b
     using Power = unsigned long long;
     using Powers = std::array<Power, bitSize>;
 
-    using DiffWires = std::map<Wire, Wires>;
     using WireLayers = std::vector<Wires>;
-    using WireConversion = std::map<Wire, Wire>;
-
     using DiffInt = long long;
+    using GateIntPair = std::pair<GateInt, GateInt>;
+    using GateIntPairs = std::vector<GateIntPair>;
+    using UniqueGateInt = std::set<GateInt>;
+    using GateInts = std::vector<GateInt>;
 
     // set values for AND, OR, and XOR
     Wire operAND {-1};
@@ -377,6 +383,56 @@ namespace aoc24b
         return xyz;
     }
 
+    GateIntPairs setupTestValues(const UniqueGateInt values)
+    {
+        GateIntPairs testValues {};
+        GateInts tempValues {values.begin(), values.end()};
+        for (size_t i{0}; i < tempValues.size(); ++i)
+        {
+            for (size_t j{i + 1}; j < tempValues.size(); ++j)
+            {
+                testValues.push_back({tempValues.at(i), tempValues.at(j)});
+            }
+        }
+        return testValues;
+    }
+
+    void changeXYInGraph(WireGraph& graph, const GateIntPair& pair, const Wires& xWires, const Wires& yWires)
+    {
+        assert(xWires.size() == yWires.size() && "xWires and yWires are not the same size.\n");
+        Bits xBits {pair.first};
+        Bits yBits {pair.second};
+        for (size_t i{0}; i < xWires.size(); ++i)
+        {
+            graph.setValue(xWires.at(i), xBits.test(i));
+            graph.setValue(yWires.at(i), yBits.test(i));
+        }
+    }
+
+    GateIntPair testSwaps(const WireGraph& graph, const Wires& xWires, const Wires& yWires, const Wires& zWires, const Powers& powersOfTwo, const GateIntPairs& testPairs)
+    {
+        WireGraph copyGraph {graph};
+        for (const GateIntPair& pair : testPairs)
+        {
+            changeXYInGraph(copyGraph, pair, xWires, yWires);
+            copyGraph.operateAll();
+
+            GateInt testXGraph {getGraphInt(copyGraph, xWires, powersOfTwo)};
+            GateInt testYGraph {getGraphInt(copyGraph, yWires, powersOfTwo)};
+            GateInt testZGraph {getGraphInt(copyGraph, zWires, powersOfTwo)};
+
+            if (testXGraph + testYGraph != testZGraph)
+            {
+                std::cout << "fail: " << pair.first << ' ' << pair.second << '\n';
+                return pair;
+            }
+            std::cout << "success: " << pair.first << ' ' << pair.second << '\n';
+        }
+        // if all swaps succeed, return a sentinel value
+        // we'll use {1, 1}
+        return {1, 1};
+    }
+
     void swapWires(SwappedWires& swaps, const WireLayers& layers, const WireGraph& graph)
     {
         for (size_t a{0}; a < layers.size(); ++a)
@@ -399,7 +455,7 @@ namespace aoc24b
         }
     }
 
-    SwappedWires findSolutionSwaps(const SwappedWires& swaps, const WireGraph& graph, const Wires& xWires, const Wires& yWires, const Wires& zWires, const Powers& powersOfTwo, const GateInt& xyGraph, const GateInt& zGraph, const GateInt& initialXY)
+    SwappedWires findSolutionSwaps(const SwappedWires& swaps, const WireGraph& graph, const Wires& xWires, const Wires& yWires, const Wires& zWires, const Powers& powersOfTwo, const GateInt& xyGraph, const GateInt& zGraph, const GateInt& initialXY, const GateIntPairs& testPairs)
     {
         // start by setting up a starting set of wires to swap
         SwappedWireSeq sequence {};
@@ -431,8 +487,13 @@ namespace aoc24b
         DiffInt bestMatch {std::llabs(xyGraph - zGraph)};
         // std::cout << "init best match " << bestMatch << '\n';
 
+        // we want to change x and y values in graph later, so set up here
+        WireGraph currentGraph {graph};
+
         size_t limit {10'000'000};
         size_t loop {0};
+        int repeatCounter {0};
+        size_t lastSwapIndex {};
         while (bestMatch != 0 && loop < limit)
         {
             // get swaps from set positions for this loop
@@ -457,7 +518,7 @@ namespace aoc24b
                     continue;
                 
                 sequence[pairsIndex] = swaps.at(a);
-                WireGraph copyGraph {graph};
+                WireGraph copyGraph {currentGraph};
                 for (const SwappedPair& pair : sequence)
                     copyGraph.swapNodes(pair.first, pair.second);
                 copyGraph.operateAll();
@@ -475,23 +536,87 @@ namespace aoc24b
                 {
                     bestMatch = diff;
                     currentBestPair = swaps.at(a);
-                    // std::cout << "lowest: " << bestMatch << '\n';
+                    lastSwapIndex = a;
+                    std::cout << "lowest: " << bestMatch << '\n';
+                    std::cout << "\tx, y: " << swapXGraph << ' ' << swapYGraph << '\n';
+                    for (const SwappedPair& p : sequence)
+                        std::cout << p.first << ' ' << p.second << ' ';
+                    std::cout << '\n';
                 }
 
                 if (diff == 0)
                 {
-                    // std::cout << "final: " << sequence.at(0).first << ' ' << sequence.at(0).second << ' ' << sequence.at(1).first << ' ' << sequence.at(1).second << ' ' << sequence.at(2).first << ' ' << sequence.at(2).second << ' ' << sequence.at(3).first << ' ' << sequence.at(3).second << '\n';
-                    return {{sequence.at(0).first, sequence.at(0).second}, {sequence.at(1).first, sequence.at(1).second}, {sequence.at(2).first, sequence.at(2).second}, {sequence.at(3).first, sequence.at(3).second}};
+                    // test that these swaps work for other x and y values
+                    GateIntPair testResult {testSwaps(copyGraph, xWires, yWires, zWires, powersOfTwo, testPairs)};
+                    if (testResult.first == 1 && testResult.second == 1)
+                        return {{sequence.at(0).first, sequence.at(0).second}, {sequence.at(1).first, sequence.at(1).second}, {sequence.at(2).first, sequence.at(2).second}, {sequence.at(3).first, sequence.at(3).second}};
+                    // if a swap didn't work, use that in currentGraph
+                    else
+                    {
+                        std::cout << "reached\n";
+                        changeXYInGraph(currentGraph, testResult, xWires, yWires);
+                        // need to reset bestMatch value
+                        // we'll set to an arbitrarily high value
+                        bestMatch = 1'000'000'000'000'000;
+                    }
                 }
             }
             // check if we got a good match and, if so, use that
             if (currentBestPair.first != 0 || currentBestPair.second != 0)
+            {
                 sequence[pairsIndex] = currentBestPair;
+                repeatCounter = 0;
+            }
+            else
+                ++repeatCounter;
+
+            // to try to avoid an infinite loop
+            if (repeatCounter == maxSwapSize)
+            {
+                UniqueWires repeatSwaps {};
+                for (size_t p{0}; p < maxSwapSize; ++p)
+                {
+                    if (p == pairsIndex)
+                        continue;
+                    repeatSwaps.insert(sequence.at(p).first);
+                    repeatSwaps.insert(sequence.at(p).second);
+                }
+                size_t repeatStartIndex {lastSwapIndex};
+                SwappedPair replacement {};
+                if (lastSwapIndex == swaps.size() - 1)
+                    repeatStartIndex = 0;
+                else
+                    repeatStartIndex += 1;
+                for (; repeatStartIndex < swaps.size(); ++repeatStartIndex)
+                {
+                    if (repeatSwaps.find(swaps.at(repeatStartIndex).first) == repeatSwaps.end() && repeatSwaps.find(swaps.at(repeatStartIndex).second) == repeatSwaps.end())
+                    {
+                        replacement = swaps.at(repeatStartIndex);
+                        break;
+                    }
+                }
+                if (replacement.first == replacement.second)
+                {
+                    for (size_t i{0}; i < repeatStartIndex; ++i)
+                    {
+                        if (repeatSwaps.find(swaps.at(i).first) == repeatSwaps.end() && repeatSwaps.find(swaps.at(i).second) == repeatSwaps.end())
+                        {
+                            replacement = swaps.at(i);
+                            break;
+                        }
+                    }
+                }
+                sequence[pairsIndex] = replacement;
+                repeatCounter = 0;
+                // also reset bestMatch
+                bestMatch = 1'000'000'000'000'000;
+            }
 
             // shift index so that next position is covered in next loop
             ++pairsIndex;
             if (pairsIndex >= maxSwapSize)
                 pairsIndex = 0;
+            
             ++loop;
         }
 
@@ -567,6 +692,23 @@ namespace aoc24b
         GateInt initialXY {initialX + initialY};
         // std::cout << "initial: " << initialX << ' ' << initialY << ' ' << initialXY << '\n';
 
+        // let's construct different x and y values to test with
+        UniqueGateInt initTestValues {};
+        initTestValues.insert(initialX);
+        initTestValues.insert(initialY);
+        // let's get the xor values too
+        // we'll get max x/y value using info from the input
+        Power maxXY {powersOfTwo.at(static_cast<GateInt>(xWires.size())) - 1};
+        GateInt xorInitialX {initialX ^ maxXY};
+        GateInt xorInitialY {initialY ^ maxXY};
+        initTestValues.insert(xorInitialX);
+        initTestValues.insert(xorInitialY);
+        // chuck in 0 and the max x/y value
+        initTestValues.insert(0);
+        initTestValues.insert(maxXY);
+
+        GateIntPairs testPairs {setupTestValues(initTestValues)};
+
         // create the graph class object
         WireGraph cleanGraph {total};
         graphSetup(cleanGraph, associations, wires);
@@ -632,7 +774,7 @@ namespace aoc24b
         swapWires(swaps, layers, cleanGraph);
         // std::cout << "swaps: " << swaps.size() << '\n';
 
-        SwappedWires swappedWires {findSolutionSwaps(swaps, cleanGraph, xWires, yWires, zWires, powersOfTwo, xyGraph, zGraph, initialXY)};
+        SwappedWires swappedWires {findSolutionSwaps(swaps, cleanGraph, xWires, yWires, zWires, powersOfTwo, xyGraph, zGraph, initialXY, testPairs)};
 
         // SwappedWires swappedWires {{1,2},{3,4},{5,6},{7,8}};
         return sortAndCombineWires(swappedWires, indexToStrMap);

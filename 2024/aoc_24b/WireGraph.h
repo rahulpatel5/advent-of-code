@@ -83,8 +83,6 @@ public:
         return onlyInputs;
     }
 
-    // this might fail to operate some wires if inputs missing
-    // need a layered approach to iterating?
     void operateAll()
     {
         std::vector<Node*> inputs {getFirstInputs()};
