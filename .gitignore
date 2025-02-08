@@ -40,3 +40,8 @@
 # inputs
 **/input.txt
 **/input.h
+
+# pictures
+*.png
+*.jpeg
+*.jpg
