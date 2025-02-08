@@ -61,6 +61,13 @@ logic is a bit complex. It seems to be:
     - the carry over from previous x and y inputs, with OR operator
 - the carry over uses an AND operator, with previous x and y inputs
 where this isn't the case, suggests we need a swap
+
+can be more methodical about this:
+- for first bit, check x and y XOR into z, and store carry over wire
+- get x and y XOR wire and check it XORs with carry over into z
+- get x and y AND wire and rest of wires giving get new carry over wire
+- repeat for all bits except last
+- for last bit, z is the carry over
 */
 
 namespace aoc24b
@@ -80,6 +87,7 @@ namespace aoc24b
 
     using Input = Wire;
     using Output = Wire;
+    using Outputs = std::vector<Wire>;
     using Operator = Wire;
     using Gate = std::array<Wire, 4>;
     using Gates = std::vector<Gate>;
@@ -237,9 +245,147 @@ namespace aoc24b
         }
     }
 
-    // consider collecting more info
-    // e.g. splitting so we know where we have ANDs when we want OR etc
-    Wires findWrongAddingAreas(WireGraph& graph, const Wires& xWires, const Wires& yWires, const Wires& zWires)
+    // we'll take a shortcut and assume one of the swaps of each pair is z
+    SwappedWires findSwapsFromWrongAddingAreas(WireGraph& graph, const Wires& xWires, const Wires& yWires, const Wires& zWires)
+    {
+        SwappedWires swaps {};
+        for (size_t i{0}; i < zWires.size(); ++i)
+        {
+            Wire zOper {graph.getOper(zWires.at(i))};
+            // get the inputs to the z wire
+            WireInputs zInputs {graph.getInputs(zWires.at(i))};
+            Outputs optionOutputs {graph.getOutputs(zInputs.first)};
+
+            // handle first bit differently as no carry over to handle
+            if (i == 0)
+            {
+                if (zOper != -operXOR)
+                {
+                    std::cout << "0 " << i << ' ' << zWires.at(i) << '\n';
+                    // might only be one alternative output
+                    // but do for loop for completeness
+                    for (const Wire& output : optionOutputs)
+                    {
+                        if (graph.getOper(output) == -operXOR)
+                        {
+                            swaps.push_back({zWires.at(i), output});
+                            break;
+                        }
+                    }
+                }
+            }
+            // handle last z bit differently as no direct x and y bits
+            else if (i == zWires.size() - 1)
+            {
+                // OR or XOR would handle final bit fine
+                // only issue is if operation is AND
+                // might need to check if there are intermediate steps
+                // let's skip that for now
+                if (zOper == -operAND)
+                {
+                    std::cout << "1 " << i << ' ' << zWires.at(i) << '\n';
+                    for (const Wire& output : optionOutputs)
+                    {
+                        if (graph.getOper(output) != -operAND)
+                        {
+                            swaps.push_back({zWires.at(i), output});
+                            break;
+                        }
+                    }
+                }
+            }
+            else
+            {
+                // check if either of the inputs has no input itself
+                // this means that something has gone wrong
+                // it also means it's x/y, so we need to go 1 layer deeper
+                if (graph.hasNoInput(zInputs.first) || graph.hasNoInput(zInputs.second))
+                {
+                    std::cout << "3 " << i << ' ' << zWires.at(i) << '\n';
+                    for (const Wire& output : optionOutputs)
+                    {
+                        if (output != zWires.at(i))
+                        {
+                            Outputs layer2Outputs {graph.getOutputs(output)};
+                            for (const Wire& layer2 : layer2Outputs)
+                            {
+                                if (graph.getOper(layer2) == -operXOR)
+                                {
+                                    swaps.push_back({zWires.at(i), layer2});
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    continue;
+                }
+
+                // if z wire operator is not XOR, wrong
+                if (zOper != -operXOR)
+                {
+                    bool foundMatch {false};
+                    std::cout << "2 " << i << ' ' << zWires.at(i) << '\n';
+                    for (const Wire& output : optionOutputs)
+                    {
+                        if (graph.getOper(output) == -operXOR)
+                        {
+                            swaps.push_back({zWires.at(i), output});
+                            foundMatch = true;
+                            break;
+                        }
+                    }
+                    // if this fails, we'll look from x and y
+                    if (!foundMatch)
+                    {
+                        Outputs xOutputs {graph.getOutputs(xWires.at(i))};
+                        for (const Wire& output : xOutputs)
+                        {
+                            // go another layer as x/y shouldn't go to z
+                            Outputs layer2Outputs {graph.getOutputs(output)};
+                            for (const Wire& layer2 : layer2Outputs)
+                            {
+                                if (graph.getOper(layer2) == -operXOR)
+                                {
+                                    swaps.push_back({zWires.at(i), layer2});
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    continue;
+                }
+            }
+        }
+        return swaps;
+    }
+
+    WireStr sortAndCombineWires(const SwappedWires& swapped, const IndexToStr& indexToStrMap)
+    {
+        UniqueWireStr wires {};
+        for (const SwappedPair& pair : swapped)
+        {
+            wires.insert(indexToStrMap.at(pair.first));
+            wires.insert(indexToStrMap.at(pair.second));
+        }
+        // hard-code check that this is 8 wires, as expected
+        if (wires.size() != 8)
+            throw std::invalid_argument("Final collection does not have the expected 8 wires.\n");
+
+        bool isFirstLoop {true};
+        WireStr final;
+        for (const WireStr& wire : wires)
+        {
+            if (!isFirstLoop)
+            {
+                final.append(",");
+            }
+            final.append(wire);
+            isFirstLoop = false;
+        }
+        return final;
+    }
+
+    Wires test(WireGraph& graph, const Wires& xWires, const Wires& yWires, const Wires& zWires)
     {
         Wires wrong {};
         for (size_t i{0}; i < zWires.size(); ++i)
@@ -391,82 +537,6 @@ namespace aoc24b
         return wrong;
     }
 
-    SwappedWires sortSwapsInOrder(const Wires& swaps, WireGraph& graph, const Wires& xWires, const Wires& yWires, const Wires& zWires)
-    {
-        assert(swaps.size() % 2 == 0 && "There are an odd number of swaps to order.\n");
-        SwappedWires order {};
-        for (size_t i{0}; i < swaps.size(); ++i)
-        {
-            // we'll skip if we get a z wire
-            if (std::find(zWires.begin(), zWires.end(), swaps.at(i)) != zWires.end())
-                continue;
-            
-            Wires current {swaps.at(i)};
-            Wire matchingXWire {-1};
-            while (matchingXWire < 0)
-            {
-                Wires next {};
-                for (Wire c : current)
-                {
-                    WireInputs newInputs {graph.getInputs(c)};
-                    if (std::find(xWires.begin(), xWires.end(), newInputs.first) != xWires.end())
-                    {
-                        matchingXWire = newInputs.first;
-                        // std::cout << "1 " << newInputs.first << '\n';
-                        break;
-                    }
-                    else
-                        next.push_back(newInputs.first);
-                    if (std::find(xWires.begin(), xWires.end(), newInputs.second) != xWires.end())
-                    {
-                        matchingXWire = newInputs.second;
-                        // std::cout << "2 " << newInputs.second << '\n';
-                        break;
-                    }
-                    else
-                        next.push_back(newInputs.second);
-                }
-                current = next;
-            }
-            auto iteratorXWire {std::find(xWires.begin(), xWires.end(), matchingXWire)};
-            size_t indexXWire {static_cast<size_t>(std::distance(xWires.begin(), iteratorXWire))};
-            Wire matchingZWire {zWires.at(indexXWire)};
-            // std::cout << "z: " << indexXWire << ' ' << zWires.at(indexXWire) << '\n';
-            if (std::find(swaps.begin(), swaps.end(), matchingZWire) != swaps.end())
-                order.push_back({swaps.at(i), matchingZWire});
-            else
-                throw std::out_of_range("Did not find valid matching z wire for swap pair.\n");
-        }
-        assert(order.size() == swaps.size() / 2 && "The number of paired swaps is not half the original number as expected.\n");
-        return order;
-    }
-
-    WireStr sortAndCombineWires(const SwappedWires& swapped, const IndexToStr& indexToStrMap)
-    {
-        UniqueWireStr wires {};
-        for (const SwappedPair& pair : swapped)
-        {
-            wires.insert(indexToStrMap.at(pair.first));
-            wires.insert(indexToStrMap.at(pair.second));
-        }
-        // hard-code check that this is 8 wires, as expected
-        if (wires.size() != 8)
-            throw std::invalid_argument("Final collection does not have the expected 8 wires.\n");
-
-        bool isFirstLoop {true};
-        WireStr final;
-        for (const WireStr& wire : wires)
-        {
-            if (!isFirstLoop)
-            {
-                final.append(",");
-            }
-            final.append(wire);
-            isFirstLoop = false;
-        }
-        return final;
-    }
-
     template <std::size_t N>
     std::string parseAndGetSwappedWires(const std::array<std::string_view, N>& lines)
     {
@@ -499,26 +569,33 @@ namespace aoc24b
         // create the graph class object
         WireGraph graph {total};
         graphSetup(graph, associations, wires);
+        // std::cout << '\t' << graph.getInputs(272).first << ' ' << indexToStrMap.at(graph.getInputs(272).first) << ' ' << graph.getInputs(272).second << ' ' << indexToStrMap.at(graph.getInputs(272).second) << '\n';
 
-        Wires wrongAdding {findWrongAddingAreas(graph, xWires, yWires, zWires)};
-        for (const Wire& w : wrongAdding)
-            std::cout << w << " (" << indexToStrMap.at(w) << ") ";
+        SwappedWires swaps {findSwapsFromWrongAddingAreas(graph, xWires, yWires, zWires)};
+        for (const SwappedPair& w : swaps)
+            std::cout << w.first << " (" << indexToStrMap.at(w.first) << ") and " << w.second << " (" << indexToStrMap.at(w.second) << "), ";
         std::cout << '\n';
+        // std::cout << indexToStrMap.at(272) << '\n';
+        // std::cout << '\t' << graph.getOutputs(206).size() << '\n';
+        // std::cout << '\t' << indexToStrMap.at(graph.getOutputs(206).at(0)) << ' ' << indexToStrMap.at(graph.getOutputs(206).at(1)) << '\n';
 
         // swap wires, then test again
-        // THIS IS WRONG - get swaps directly in findWrongAddingAreas()
-        SwappedWires swaps {sortSwapsInOrder(wrongAdding, graph, xWires, yWires, zWires)};
         WireGraph revGraph {graph};
         for (const SwappedPair& p : swaps)
             revGraph.swapNodes(p.first, p.second);
-        Wires testWrongness {findWrongAddingAreas(revGraph, xWires, yWires, zWires)};
-        for (const Wire& w : testWrongness)
+        Wires getThis {test(revGraph, xWires, yWires, zWires)};
+        for (const Wire& w : getThis)
             std::cout << w << ' ';
         std::cout << '\n';
-        // return sortAndCombineWires(swaps, indexToStrMap);
 
-        SwappedWires swappedWires {{1,2},{3,4},{5,6},{7,8}};
-        return sortAndCombineWires(swappedWires, indexToStrMap);
+        SwappedWires testWrongness {findSwapsFromWrongAddingAreas(revGraph, xWires, yWires, zWires)};
+        for (const SwappedPair& w : testWrongness)
+            std::cout << w.first << ',' << w.second << ' ';
+        std::cout << '\n';
+        return sortAndCombineWires(swaps, indexToStrMap);
+
+        // SwappedWires swappedWires {{1,2},{3,4},{5,6},{7,8}};
+        // return sortAndCombineWires(swappedWires, indexToStrMap);
     }
 }
 
