@@ -38,6 +38,7 @@
 **/external/
 
 # inputs
+*.txt
 **/input.txt
 **/input.h
 
