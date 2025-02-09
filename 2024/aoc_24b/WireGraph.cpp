@@ -2,6 +2,8 @@
 #include <unordered_map>
 #include <algorithm>
 #include <iterator>
+#include <cassert>
+#include <algorithm>
 
 WireGraph::WireGraph(std::int16_t vertices)
     : m_vertices {vertices}
@@ -60,41 +62,39 @@ void WireGraph::removeEdge(std::int16_t a, std::int16_t b)
     outputs.erase(std::remove(outputs.begin(), outputs.end(), m_wires[a]), outputs.end());
 }
 
-void WireGraph::operate(std::int16_t a)
+std::pair<std::int16_t, std::int16_t> WireGraph::getInputs(std::int16_t a)
 {
-    // if only input, 
-    if (m_wires[a]->m_inputs.empty())
-        {/* intentionally empty */}
-    // 1 for AND
-    else if (m_wires[a]->m_operation == 1)
-        m_wires[a]->m_value = m_wires[a]->m_inputs.at(0)->m_value & m_wires[a]->m_inputs.at(1)->m_value;
-    // 2 for OR
-    else if (m_wires[a]->m_operation == 2)
-        m_wires[a]->m_value = m_wires[a]->m_inputs.at(0)->m_value | m_wires[a]->m_inputs.at(1)->m_value;
-    // 3 for XOR
-    else if (m_wires[a]->m_operation == 3)
-        m_wires[a]->m_value = m_wires[a]->m_inputs.at(0)->m_value ^ m_wires[a]->m_inputs.at(1)->m_value;
+    assert(m_wires[a]->m_inputs.size() == 2 && "There are not two inputs.\n");
+    std::pair<std::int16_t, std::int16_t> pair {};
+    pair.first = m_wires[a]->m_inputs.at(0)->m_wire;
+    pair.second = m_wires[a]->m_inputs.at(1)->m_wire;
+    return pair;
+}
+
+std::vector<std::int16_t> WireGraph::getOutputs(std::int16_t a)
+{
+    std::vector<std::int16_t> outputs {};
+    for (Node* node : m_wires[a]->m_outputs)
+        outputs.push_back(node->m_wire);
+    return outputs;
 }
 
 void WireGraph::swapNodes(std::int16_t a, std::int16_t b)
 {
-    // if we have nodes that are inputs only, handle differently
-    if (hasNoInput(a) && hasNoInput(b))
+    // assume we do not have nodes that are inputs only
+    // collect inputs for each node
+    std::vector<std::int16_t> aInputs {};
+    for (Node* input : m_wires[a]->m_inputs)
+        aInputs.push_back(input->m_wire);
+    std::vector<std::int16_t> bInputs {};
+    for (Node* input : m_wires[b]->m_inputs)
+        bInputs.push_back(input->m_wire);
+    // if aInputs and bInputs are the same, we should skip to avoid issues
+    std::sort(aInputs.begin(), aInputs.end());
+    std::sort(bInputs.begin(), bInputs.end());
+    if (aInputs != bInputs)
     {
-        // don't know what should happen here
-        // try swapping values only
-        std::swap(m_wires[a]->m_value, m_wires[b]->m_value);
-    }
-    else if (!hasNoInput(a) && !hasNoInput(b))
-    {
-        // collect inputs for each node
-        std::vector<std::int16_t> aInputs {};
-        for (Node* input : m_wires[a]->m_inputs)
-            aInputs.push_back(input->m_wire);
-        std::vector<std::int16_t> bInputs {};
-        for (Node* input : m_wires[b]->m_inputs)
-            bInputs.push_back(input->m_wire);
-        // remove and add those edges for each node
+        // remove and add the edges for each node
         for (std::int16_t input : aInputs)
         {
             removeEdge(a, input);
@@ -105,48 +105,8 @@ void WireGraph::swapNodes(std::int16_t a, std::int16_t b)
             removeEdge(b, input);
             addEdge(a, input);
         }
-        // swap the operators and values
-        std::swap(m_wires[a]->m_operation, m_wires[b]->m_operation);
-        std::swap(m_wires[a]->m_value, m_wires[b]->m_value);
     }
-    else
-        throw std::invalid_argument("Given a mix of a wire with no input and a wire with inputs to swap.\n");
-}
-
-void WireGraph::updateOutputs(std::int16_t a)
-{
-    // iterate through outputs and update values
-    // we'll do this by collecting new outputs in each loop
-    std::vector<Node*> current {m_wires[a]->m_outputs};
-    while (!current.empty())
-    {
-        std::vector<Node*> next {};
-        for (Node* node : current)
-        {
-            operate(node->m_wire);
-            next.insert(next.end(), node->m_outputs.begin(), node->m_outputs.end());
-        }
-        current = next;
-    }
-}
-
-std::vector<std::int16_t> WireGraph::getAllInputs(std::int16_t a) const
-{
-    std::vector<std::int16_t> inputs {};
-    std::vector<Node*> current {};
-    current.push_back(m_wires[a]);
-    // we're collecting too many inputs, so let's limit to 3 layers
-    int layers {0};
-    while (!current.empty() && layers < 3)
-    {
-        std::vector<Node*> next {};
-        for (Node* node : current)
-        {
-            inputs.push_back(node->m_wire);
-            next.insert(next.end(), node->m_inputs.begin(), node->m_inputs.end());
-        }
-        current = next;
-        ++layers;
-    }
-    return inputs;
+    // swap the operators and values
+    std::swap(m_wires[a]->m_operation, m_wires[b]->m_operation);
+    std::swap(m_wires[a]->m_value, m_wires[b]->m_value);
 }

@@ -9,10 +9,8 @@
 #include <set>
 #include <algorithm>
 #include <cassert>
-#include <iterator>
+// #include <iterator>
 #include "WireGraph.h"
-
-#include <iostream>
 
 /*
 re-doing this puzzle from scratch as the old approach wasn't working
@@ -68,6 +66,23 @@ can be more methodical about this:
 - get x and y AND wire and rest of wires giving get new carry over wire
 - repeat for all bits except last
 - for last bit, z is the carry over
+
+PSEUDOCODE:
+    For each bit, from least to most significant
+        If last bit
+            If penultimate carryover isn't z, swap
+        If first bit
+            If x and y to z isn't XOR (and carryover not AND), swap
+        // for other bits
+        If xyXOR != XOR input to z, swap
+        If x and y directly input to z
+            If xyXOR == z, swap
+            If xyAND == z, swap
+        If z operation not XOR, swap
+        If z inputs not xyXOR and carryover, swap
+        If intermedCarryover not have xyXOR and carryover inputs, swap
+        If next carryover input != output of non-z carryover, swap
+        If nextCarryover inputs not intermedCarryover and xyAND, swap
 */
 
 namespace aoc24b
@@ -80,9 +95,9 @@ namespace aoc24b
     using IndexToStr = std::map<Wire, WireStr>;
 
     using Wires = std::vector<Wire>;
+    using UniqueWires = std::set<Wire>;
     using WireMap = std::map<Wire, WireValue>;
     using UniqueWireStr = std::set<WireStr>;
-    using WireValues = std::vector<WireValue>;
     using WireInputs = std::pair<Wire, Wire>;
 
     using Input = Wire;
@@ -245,116 +260,270 @@ namespace aoc24b
         }
     }
 
-    // we'll take a shortcut and assume one of the swaps of each pair is z
-    SwappedWires findSwapsFromWrongAddingAreas(WireGraph& graph, const Wires& xWires, const Wires& yWires, const Wires& zWires)
+    SwappedWires findErrorsInBinaryAdding(const WireGraph& origGraph, const Wires& xWires, const Wires& yWires, const Wires& zWires, const IndexToStr& indexToStrMap)
     {
+        WireGraph graph {origGraph};
         SwappedWires swaps {};
+        UniqueWires foundSwaps {};
+        Wire carryover {};
         for (size_t i{0}; i < zWires.size(); ++i)
         {
-            Wire zOper {graph.getOper(zWires.at(i))};
-            // get the inputs to the z wire
-            WireInputs zInputs {graph.getInputs(zWires.at(i))};
-            Outputs optionOutputs {graph.getOutputs(zInputs.first)};
+            // the last bit should have a carry over that is z and with OR
+            if (i == zWires.size() - 1)
+            {
+                if ((carryover != zWires.back() || graph.getOper(carryover) != -operOR) && foundSwaps.find(carryover) == foundSwaps.end())
+                {
+                    swaps.push_back({carryover, zWires.at(i)});
+                    // for completeness
+                    foundSwaps.insert(carryover);
+                    foundSwaps.insert(zWires.at(i));
+                    graph.swapNodes(carryover, zWires.at(i));
+                }
+                continue;
+            }
 
-            // handle first bit differently as no carry over to handle
+            // we're swapping outputs so we'll assume all x and y are ok
+            Wires xyOutputs {graph.getOutputs(xWires.at(i))};
+            // if we're in the first bit, there's less to do
             if (i == 0)
             {
-                if (zOper != -operXOR)
+                Wire zWire {};
+                for (Wire output : xyOutputs)
                 {
-                    std::cout << "0 " << i << ' ' << zWires.at(i) << '\n';
-                    // might only be one alternative output
-                    // but do for loop for completeness
-                    for (const Wire& output : optionOutputs)
-                    {
-                        if (graph.getOper(output) == -operXOR)
-                        {
-                            swaps.push_back({zWires.at(i), output});
-                            break;
-                        }
-                    }
+                    if (output == zWires.at(i))
+                        zWire = output;
+                    else
+                        carryover = output;
                 }
+                // if the first z has the wrong operator
+                // assume it's on the other output
+                if (graph.getOper(zWire) != -operXOR)
+                {
+                    swaps.push_back({zWire, carryover});
+                    foundSwaps.insert(zWire);
+                    foundSwaps.insert(carryover);
+                    graph.swapNodes(carryover, zWire);
+                    carryover = zWire;
+                }
+                // we'll skip checking if carryover has the right operator
+                // there's no other options for swapping for the first bit
+                continue;
             }
-            // handle last z bit differently as no direct x and y bits
-            else if (i == zWires.size() - 1)
-            {
-                // OR or XOR would handle final bit fine
-                // only issue is if operation is AND
-                // might need to check if there are intermediate steps
-                // let's skip that for now
-                if (zOper == -operAND)
-                {
-                    std::cout << "1 " << i << ' ' << zWires.at(i) << '\n';
-                    for (const Wire& output : optionOutputs)
-                    {
-                        if (graph.getOper(output) != -operAND)
-                        {
-                            swaps.push_back({zWires.at(i), output});
-                            break;
-                        }
-                    }
-                }
-            }
-            else
-            {
-                // check if either of the inputs has no input itself
-                // this means that something has gone wrong
-                // it also means it's x/y, so we need to go 1 layer deeper
-                if (graph.hasNoInput(zInputs.first) || graph.hasNoInput(zInputs.second))
-                {
-                    std::cout << "3 " << i << ' ' << zWires.at(i) << '\n';
-                    for (const Wire& output : optionOutputs)
-                    {
-                        if (output != zWires.at(i))
-                        {
-                            Outputs layer2Outputs {graph.getOutputs(output)};
-                            for (const Wire& layer2 : layer2Outputs)
-                            {
-                                if (graph.getOper(layer2) == -operXOR)
-                                {
-                                    swaps.push_back({zWires.at(i), layer2});
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                    continue;
-                }
 
-                // if z wire operator is not XOR, wrong
-                if (zOper != -operXOR)
+            // now we're in any of the bits between the first and last
+            Wire xyXOR {};
+            Wire xyAND {};
+            Wire trueXYAND {};
+            for (Wire output : xyOutputs)
+            {
+                if (graph.getOper(output) == -operXOR)
+                    xyXOR = output;
+                else if (graph.getOper(output) == -operAND)
                 {
-                    bool foundMatch {false};
-                    std::cout << "2 " << i << ' ' << zWires.at(i) << '\n';
-                    for (const Wire& output : optionOutputs)
+                    xyAND = output;
+                    trueXYAND = xyAND;
+                }
+                // can't be any other operator
+                else
+                    throw std::invalid_argument("Error: x and y wires have an operator other than XOR or AND.\n");
+            }
+
+            // check that the z wire doesn't connect to x and y directly
+            // to find the swap position we need to use carryover
+            Wire trueZWire {zWires.at(i)};
+            Outputs carryoverOutputs {graph.getOutputs(carryover)};
+            Output carryoverOutputXOR {};
+            for (Wire output : carryoverOutputs)
+            {
+                if (graph.getOper(output) == -operXOR)
+                    carryoverOutputXOR = output;
+            }
+
+            // we know the same wire can't swap twice
+            if (xyXOR == zWires.at(i) && foundSwaps.find(zWires.at(i)) == foundSwaps.end())
+            {
+                swaps.push_back({carryoverOutputXOR, zWires.at(i)});
+                foundSwaps.insert(carryoverOutputXOR);
+                foundSwaps.insert(zWires.at(i));
+                graph.swapNodes(carryoverOutputXOR, zWires.at(i));
+                // trueZWire = carryoverOutputXOR;
+            }
+            // if xyAND is out of position, we assume xyXOR is in position
+            // the XOR output of xyXOR will point to what z swaps with
+            else if (xyAND == zWires.at(i) && foundSwaps.find(zWires.at(i)) == foundSwaps.end())
+            {
+                Wire zSwap {};
+                for (Wire output : graph.getOutputs(xyXOR))
+                {
+                    if (graph.getOper(output) == -operXOR)
+                        zSwap = output;
+                }
+                swaps.push_back({zSwap, zWires.at(i)});
+                foundSwaps.insert(zSwap);
+                foundSwaps.insert(zWires.at(i));
+                graph.swapNodes(zSwap, zWires.at(i));
+                // trueZWire = zSwap;
+                trueXYAND = zSwap;
+            }
+            // check if z doesn't have XOR operator
+            else if (graph.getOper(zWires.at(i)) != -operXOR && foundSwaps.find(zWires.at(i)) == foundSwaps.end())
+            {
+                // we'll follow the XOR output of xyXOR to get the swap
+                Wire zSwap {};
+                for (Wire output : graph.getOutputs(xyXOR))
+                {
+                    if (graph.getOper(output) == -operXOR)
+                        zSwap = output;
+                }
+                swaps.push_back({zSwap, zWires.at(i)});
+                foundSwaps.insert(zSwap);
+                foundSwaps.insert(zWires.at(i));
+                graph.swapNodes(zSwap, zWires.at(i));
+            }
+
+            // let's check that the right wires are pointing to z wire
+            // we'll use the corrected z wire
+            WireInputs zXORInputs {graph.getInputs(trueZWire)};
+
+            // first check if the z wire is in the right position
+            if (zXORInputs.first != xyXOR && zXORInputs.second != xyXOR && zXORInputs.first != xyAND && zXORInputs.second != xyAND)
+            {
+                // find the XOR output from xyXOR
+                bool foundXOR {false};
+                for (Wire output : graph.getOutputs(xyXOR))
+                {
+                    if (graph.getOper(output) == -operXOR && foundSwaps.find(zWires.at(i)) == foundSwaps.end())
                     {
-                        if (graph.getOper(output) == -operXOR)
-                        {
-                            swaps.push_back({zWires.at(i), output});
-                            foundMatch = true;
-                            break;
-                        }
+                        swaps.push_back({output, zWires.at(i)});
+                        foundSwaps.insert(output);
+                        foundSwaps.insert(zWires.at(i));
+                        graph.swapNodes(output, zWires.at(i));
+                        foundXOR = true;
                     }
-                    // if this fails, we'll look from x and y
-                    if (!foundMatch)
+                    // suppose we should check xyAND in case it's the input
+                    if (!foundXOR)
                     {
-                        Outputs xOutputs {graph.getOutputs(xWires.at(i))};
-                        for (const Wire& output : xOutputs)
+                        for (Wire output : graph.getOutputs(xyAND))
                         {
-                            // go another layer as x/y shouldn't go to z
-                            Outputs layer2Outputs {graph.getOutputs(output)};
-                            for (const Wire& layer2 : layer2Outputs)
+                            if (graph.getOper(output) == -operXOR && foundSwaps.find(zWires.at(i)) == foundSwaps.end())
                             {
-                                if (graph.getOper(layer2) == -operXOR)
-                                {
-                                    swaps.push_back({zWires.at(i), layer2});
-                                    break;
-                                }
+                                swaps.push_back({output, zWires.at(i)});
+                                foundSwaps.insert(output);
+                                foundSwaps.insert(zWires.at(i));
+                                graph.swapNodes(output, zWires.at(i));
                             }
                         }
                     }
-                    continue;
                 }
             }
+            
+            // if xyAND points to the z wire instead of xyOR, swap
+            // use sentinel value
+            Wire zInputXOR {-1};
+            if (graph.getOper(zXORInputs.first) == -operXOR)
+                zInputXOR = zXORInputs.first;
+            else if (graph.getOper(zXORInputs.second) == -operXOR)
+                zInputXOR = zXORInputs.second;
+            
+            if (zXORInputs.first != xyXOR && zXORInputs.second != xyXOR && (zXORInputs.first == xyAND || zXORInputs.second == xyAND) && foundSwaps.find(xyXOR) == foundSwaps.end())
+            {
+                swaps.push_back({xyXOR, xyAND});
+                foundSwaps.insert(xyXOR);
+                foundSwaps.insert(xyAND);
+                graph.swapNodes(xyXOR, xyAND);
+                trueXYAND = xyXOR;
+            }
+            // check if z input with XOR operator connects to x and y
+            // if not, they need to swap
+            else if (zInputXOR != xyXOR && foundSwaps.find(zInputXOR) == foundSwaps.end())
+            {
+                swaps.push_back({zInputXOR, xyXOR});
+                foundSwaps.insert(zInputXOR);
+                foundSwaps.insert(xyXOR);
+                graph.swapNodes(xyXOR, zInputXOR);
+            }
+
+            // the other z input has to be the previous carryover
+            Wire zInputOR {-1};
+            if (graph.getOper(zXORInputs.first) == -operOR)
+                zInputOR = zXORInputs.first;
+            else if (graph.getOper(zXORInputs.second) == -operOR)
+                zInputOR = zXORInputs.second;
+
+            if ((zXORInputs.second == zInputXOR || zXORInputs.second == xyXOR) && zXORInputs.first != carryover && foundSwaps.find(carryover) == foundSwaps.end())
+            {
+                swaps.push_back({zXORInputs.first, carryover});
+                foundSwaps.insert(zXORInputs.first);
+                foundSwaps.insert(carryover);
+                graph.swapNodes(zXORInputs.first, carryover);
+            }
+            else if ((zXORInputs.first == zInputXOR || zXORInputs.first == xyXOR) && zXORInputs.second != carryover && foundSwaps.find(carryover) == foundSwaps.end())
+            {
+                swaps.push_back({zXORInputs.second, carryover});
+                foundSwaps.insert(zXORInputs.second);
+                foundSwaps.insert(carryover);
+                graph.swapNodes(zXORInputs.second, carryover);
+            }
+
+            // finally we need to handle the (next) carry over
+            // collect the wires we need
+
+            // we need the right xyAND, so correct it
+            xyAND = trueXYAND;
+
+            carryoverOutputs = graph.getOutputs(carryover);
+            assert(carryoverOutputs.size() == 2 && "Error: the carryover does not have only 2 outputs.\n");
+            Wire intermediateCarryoverUp {-1};
+            for (Wire output : carryoverOutputs)
+            {
+                if (output != trueZWire)
+                    intermediateCarryoverUp = output;
+            }
+
+            Wires xyANDOutputs {graph.getOutputs(xyAND)};
+            assert(xyANDOutputs.size() == 1 && "Error: the x and y AND branch does not have only one output.\n");
+            Wire possibleNextCarryover {xyANDOutputs.at(0)};
+            Wire candidateCarryover {possibleNextCarryover};
+
+            WireInputs possNextCarryoverInputs {graph.getInputs(possibleNextCarryover)};
+            Wire intermediateCarryoverDown {-1};
+            if (possNextCarryoverInputs.first == xyAND)
+                intermediateCarryoverDown = possNextCarryoverInputs.second;
+            else if (possNextCarryoverInputs.second == xyAND)
+                intermediateCarryoverDown = possNextCarryoverInputs.first;
+            
+            // if the intermediates don't match, swap
+            // if the inputs to intermediateUP are xyXOR and carryover,
+            // that's correct and the next carryover may be wrong
+            WireInputs intermedCarryDownInputs {graph.getInputs(intermediateCarryoverDown)};
+            if (intermediateCarryoverDown != intermediateCarryoverUp && (intermedCarryDownInputs.first != xyXOR || intermedCarryDownInputs.second != xyXOR))
+            {
+                if (foundSwaps.find(intermediateCarryoverDown) == foundSwaps.end())
+                {
+                    swaps.push_back({intermediateCarryoverDown, intermediateCarryoverUp});
+                    foundSwaps.insert(intermediateCarryoverDown);
+                    foundSwaps.insert(intermediateCarryoverUp);
+                    graph.swapNodes(intermediateCarryoverDown, intermediateCarryoverUp);
+                }
+            }
+            // otherwise the issue will be with next carryover
+            else if (intermediateCarryoverDown != intermediateCarryoverUp)
+            {
+                Wires intermedCarryUpOutputs {graph.getOutputs(intermediateCarryoverUp)};
+                assert(intermedCarryUpOutputs.size() == 1 && "Error: expected there to be only one output from intermediate carryover.\n");
+                Wire intermedCarryUpOutput {intermedCarryUpOutputs.at(0)};
+                if (intermedCarryUpOutput != possibleNextCarryover && foundSwaps.find(intermedCarryUpOutput) == foundSwaps.end())
+                {
+                    swaps.push_back({intermedCarryUpOutput, possibleNextCarryover});
+                    foundSwaps.insert(intermedCarryUpOutput);
+                    foundSwaps.insert(possibleNextCarryover);
+                    graph.swapNodes(intermedCarryUpOutput, possibleNextCarryover);
+                }
+                candidateCarryover = intermedCarryUpOutput;
+            }
+
+            // finally set the new carryover
+            carryover = candidateCarryover;
         }
         return swaps;
     }
@@ -383,158 +552,6 @@ namespace aoc24b
             isFirstLoop = false;
         }
         return final;
-    }
-
-    Wires test(WireGraph& graph, const Wires& xWires, const Wires& yWires, const Wires& zWires)
-    {
-        Wires wrong {};
-        for (size_t i{0}; i < zWires.size(); ++i)
-        {
-            Wire zOper {graph.getOper(zWires.at(i))};
-            // get the inputs to the z wire
-            WireInputs initialZInputs {graph.getInputs(zWires.at(i))};
-
-            // handle first bit differently as no carry over to handle
-            if (i == 0)
-            {
-                if (zOper != -operXOR)
-                {
-                    std::cout << "0 " << i << ' ' << zWires.at(i) << '\n';
-                    wrong.push_back(zWires.at(i));
-                }
-            }
-            // handle last z bit differently as no direct x and y bits
-            else if (i == zWires.size() - 1)
-            {
-                // OR or XOR would handle final bit fine
-                // only issue is if operation is AND
-                // might need to check if there are intermediate steps
-                // let's skip that for now
-                if (zOper == -operAND)
-                {
-                    // CONSIDER HERE
-                    // can we link directly to the swap? (from the inputs)
-                    std::cout << "1 " << i << ' ' << zWires.at(i) << '\n';
-                    wrong.push_back(zWires.at(i));
-                }
-            }
-            else
-            {
-                // if z wire operator is not XOR, wrong
-                if (zOper != -operXOR)
-                {
-                    std::cout << "2 " << i << ' ' << zWires.at(i) << '\n';
-                    wrong.push_back(zWires.at(i));
-                    continue;
-                }
-
-                // check if either of the inputs has no input itself
-                // this means that something has gone wrong
-                if (graph.hasNoInput(initialZInputs.first) || graph.hasNoInput(initialZInputs.second))
-                {
-                    std::cout << "3 " << i << ' ' << zWires.at(i) << '\n';
-                    wrong.push_back(zWires.at(i));
-                    continue;
-                }
-
-                // need to handle second bit differently as no OR
-                if (i == 1)
-                {
-                    if (!((graph.getOper(initialZInputs.first) == -operXOR || graph.getOper(initialZInputs.second) == -operXOR) && (graph.getOper(initialZInputs.first) == -operAND || graph.getOper(initialZInputs.second) == -operAND)))
-                    {
-                        if ((graph.getOper(initialZInputs.first) == -operXOR && graph.getOper(initialZInputs.second) != -operAND) || (graph.getOper(initialZInputs.first) == -operAND && graph.getOper(initialZInputs.second) != -operXOR))
-                        {
-                            std::cout << "4a " << i << ' ' << initialZInputs.second << '\n';
-                            wrong.push_back(initialZInputs.second);
-                        }
-                        else
-                        {
-                            std::cout << "4b " << i << ' ' << initialZInputs.first << '\n';
-                            wrong.push_back(initialZInputs.first);
-                        }
-                        continue;
-                    }
-                    Wire zANDBranch {};
-                    if (graph.getOper(initialZInputs.first) == -operAND)
-                        zANDBranch = initialZInputs.first;
-                    else
-                        zANDBranch = initialZInputs.second;
-                    // check that inputs are previous x/y wires
-                    WireInputs zANDInputs {graph.getInputs(zANDBranch)};
-                    if (!((zANDInputs.first == xWires.at(i - 1) || zANDInputs.second == xWires.at(i - 1)) && (zANDInputs.first == yWires.at(i - 1) || zANDInputs.second == yWires.at(i - 1))))
-                    {
-                        std::cout << "5 " << i << ' ' << zANDBranch << '\n';
-                        wrong.push_back(zANDBranch);
-                        continue;
-                    }
-                    continue;
-                }
-
-                // we need to handle the XOR and OR branches separately
-
-                // first make sure there is one XOR and one OR branch
-                if (!((graph.getOper(initialZInputs.first) == -operXOR || graph.getOper(initialZInputs.second) == -operXOR) && (graph.getOper(initialZInputs.first) == -operOR || graph.getOper(initialZInputs.second) == -operOR)))
-                {
-                    if ((graph.getOper(initialZInputs.first) == -operXOR && graph.getOper(initialZInputs.second) != -operOR) || (graph.getOper(initialZInputs.first) == -operOR && graph.getOper(initialZInputs.second) != -operXOR))
-                    {
-                        // CONSIDER HERE
-                        // could get swap via same inputs?
-                        std::cout << "6a " << i << ' ' << initialZInputs.second << '\n';
-                        wrong.push_back(initialZInputs.second);
-                    }
-                    else
-                    {
-                        std::cout << "6b " << i << ' ' << initialZInputs.first << '\n';
-                        wrong.push_back(initialZInputs.first);
-                    }
-                    continue;
-                }
-
-                Wire zXORBranch {};
-                Wire zORBranch {};
-                if (graph.getOper(initialZInputs.first) == -operXOR)
-                {
-                    zXORBranch = initialZInputs.first;
-                    zORBranch = initialZInputs.second;
-                }
-                else
-                {
-                    zXORBranch = initialZInputs.second;
-                    zORBranch = initialZInputs.first;
-                }
-
-                // the XOR branch should point to the current x/y wires
-                WireInputs expectedXYInputs {graph.getInputs(zXORBranch)};
-                if (!((expectedXYInputs.first == xWires.at(i) || expectedXYInputs.second == xWires.at(i)) && (expectedXYInputs.first == yWires.at(i) || expectedXYInputs.second == yWires.at(i))))
-                {
-                    std::cout << "7 " << i << ' ' << zXORBranch << '\n';
-                    wrong.push_back(zXORBranch);
-                    continue;
-                }
-
-                // the OR branch should have an input to prev x/y wires
-                WireInputs inputsForORBranch {graph.getInputs(zORBranch)};
-                WireInputs furtherInputs1 {graph.getInputs(inputsForORBranch.first)};
-                WireInputs furtherInputs2 {graph.getInputs(inputsForORBranch.second)};
-                // we'll only check for x wires, for simplicity
-                if (!(furtherInputs1.first == xWires.at(i - 1) || furtherInputs1.second == xWires.at(i - 1) || furtherInputs2.first == xWires.at(i - 1) || furtherInputs2.second == xWires.at(i - 1)))
-                {
-                    WireInputs furtherBeyondInputs {graph.getInputs(furtherInputs1.first)};
-                    Wires beyondOutputs {graph.getOutputs(furtherBeyondInputs.first)};
-                    if (std::find(beyondOutputs.begin(), beyondOutputs.end(), zWires.at(i - 1)) != beyondOutputs.end())
-                    {
-                        std::cout << "8a " << i << ' ' << furtherInputs1.second << '\n';
-                        wrong.push_back(furtherInputs1.second);
-                    }
-                    else
-                    {
-                        std::cout << "8b " << i << ' ' << furtherInputs1.first << '\n';
-                        wrong.push_back(furtherInputs1.first);
-                    }
-                }
-            }
-        }
-        return wrong;
     }
 
     template <std::size_t N>
@@ -569,33 +586,16 @@ namespace aoc24b
         // create the graph class object
         WireGraph graph {total};
         graphSetup(graph, associations, wires);
-        // std::cout << '\t' << graph.getInputs(272).first << ' ' << indexToStrMap.at(graph.getInputs(272).first) << ' ' << graph.getInputs(272).second << ' ' << indexToStrMap.at(graph.getInputs(272).second) << '\n';
 
-        SwappedWires swaps {findSwapsFromWrongAddingAreas(graph, xWires, yWires, zWires)};
-        for (const SwappedPair& w : swaps)
-            std::cout << w.first << " (" << indexToStrMap.at(w.first) << ") and " << w.second << " (" << indexToStrMap.at(w.second) << "), ";
-        std::cout << '\n';
-        // std::cout << indexToStrMap.at(272) << '\n';
-        // std::cout << '\t' << graph.getOutputs(206).size() << '\n';
-        // std::cout << '\t' << indexToStrMap.at(graph.getOutputs(206).at(0)) << ' ' << indexToStrMap.at(graph.getOutputs(206).at(1)) << '\n';
+        SwappedWires swaps {findErrorsInBinaryAdding(graph, xWires, yWires, zWires, indexToStrMap)};
 
         // swap wires, then test again
         WireGraph revGraph {graph};
         for (const SwappedPair& p : swaps)
             revGraph.swapNodes(p.first, p.second);
-        Wires getThis {test(revGraph, xWires, yWires, zWires)};
-        for (const Wire& w : getThis)
-            std::cout << w << ' ';
-        std::cout << '\n';
 
-        SwappedWires testWrongness {findSwapsFromWrongAddingAreas(revGraph, xWires, yWires, zWires)};
-        for (const SwappedPair& w : testWrongness)
-            std::cout << w.first << ',' << w.second << ' ';
-        std::cout << '\n';
+        SwappedWires testWrongness {findErrorsInBinaryAdding(revGraph, xWires, yWires, zWires, indexToStrMap)};
         return sortAndCombineWires(swaps, indexToStrMap);
-
-        // SwappedWires swappedWires {{1,2},{3,4},{5,6},{7,8}};
-        // return sortAndCombineWires(swappedWires, indexToStrMap);
     }
 }
 

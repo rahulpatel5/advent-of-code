@@ -63,49 +63,11 @@ public:
     std::int16_t getOper(std::int16_t a) const { return m_wires[a]->m_operation; }
     std::int16_t getTotalVertex() const { return m_vertices; }
 
-    bool hasEmptyValue(std::int16_t a) const { return m_wires[a]->m_value == -1; }
+    std::pair<std::int16_t, std::int16_t> getInputs(std::int16_t a);
     bool hasNoInput(std::int16_t a) const { return m_wires[a]->m_inputs.empty(); }
+    std::vector<std::int16_t> getOutputs(std::int16_t a);
 
-    void operate(std::int16_t a);
     void swapNodes(std::int16_t a, std::int16_t b);
-    void updateOutputs(std::int16_t a);
-
-    std::vector<std::int16_t> getAllInputs(std::int16_t a) const;
-
-    std::vector<Node*> getFirstInputs() const
-    {
-        std::vector<Node*> onlyInputs {};
-        for (std::int16_t a{0}; a < m_vertices; ++a)
-        {
-            if (m_wires[a]->m_inputs.empty())
-                onlyInputs.push_back(m_wires[a]);
-        }
-        return onlyInputs;
-    }
-
-    void operateAll()
-    {
-        std::vector<Node*> inputs {getFirstInputs()};
-        std::set<Node*> visited {};
-        while (!inputs.empty())
-        {
-            std::vector<Node*> next {};
-            // inputs further down should be at the end of inputs
-            for (Node* node : std::views::reverse(inputs))
-            {
-                visited.insert(node);
-                for (Node* output : node->m_outputs)
-                {
-                    if (visited.find(output->m_inputs.at(0)) != visited.end() && visited.find(output->m_inputs.at(1)) != visited.end())
-                    {
-                        operate(output->m_wire);
-                        next.push_back(output);
-                    }
-                }
-            }
-            inputs = next;
-        }
-    }
 };
 
 #endif // WIREGRAPH_H
