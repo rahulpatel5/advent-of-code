@@ -57,6 +57,9 @@ the longest sequence for the numeric keypad is 5 arrows
 
 rather than setting up every permutation, use numeric sequence to decide
 saves from doing sequences that aren't used
+
+still takes too long, look at patterns in shortest sequences and preceding
+may be able to identify mini-sequences to exclude etc
 */
 
 using ButtonLoc = std::pair<size_t, size_t>;
@@ -446,99 +449,23 @@ namespace aoc21b
         return dirSeqMap.at(prevSeq);
     }
 
-    ArrowList generateArrowCombinations()
+    PressList splitIntoSequences(const PressList& sequences)
     {
-        ArrowList combinations {};
-
-        Arrow up {getArrow(Direction::north)};
-        Arrow right {getArrow(Direction::east)};
-        Arrow down {getArrow(Direction::south)};
-        Arrow left {getArrow(Direction::west)};
-
-        ArrowList singleArrows {
-            std::string(1, up),
-            std::string(1, right),
-            std::string(1, down),
-            std::string(1, left),
-        };
-        combinations.insert(combinations.end(), singleArrows.begin(), singleArrows.end());
-
-        ArrowList doubleArrows {
-            "^^",
-            "^>",
-            ">^",
-            ">>",
-            ">v",
-            "v>",
-            "vv",
-            "v<",
-            "<v",
-            "<<",
-            "<^",
-            "^<",
-        };
-        combinations.insert(combinations.end(), doubleArrows.begin(), doubleArrows.end());
-
-        // need to be in lexicographical order for next_permutation
-        // in ASCII, < is before > is before ^ is before v
-        ArrowList tripleArrows {
-            "^^^",
-            ">^^",
-            ">>^",
-            ">>>",
-            ">>v",
-            ">vv",
-            "vvv",
-            "<vv",
-            "<<v",
-            "<<<",
-            "<<^",
-            "<^^",
-        };
-        for (Arrows& arw : tripleArrows)
+        PressList split {};
+        for (const Presses& seq : sequences)
         {
-            combinations.push_back(arw);
-            while (std::next_permutation(arw.begin(), arw.end()))
-                combinations.push_back(arw);
+            Index current {0};
+            Presses word {seq};
+            while (current < seq.size())
+            {
+                Index nextA {word.find('A')};
+                Presses nextSplit {word.substr(0, nextA + 1)};
+                split.push_back(nextSplit);
+                current += nextA + 1;
+                word = seq.substr(current);
+            }
         }
-
-        // can go max 3 vertically and 2 horizontally
-        ArrowList quadArrows {
-            ">^^^",
-            ">>^^",
-            ">>vv",
-            ">vvv",
-            "<vvv",
-            "<<vv",
-            "<<^^",
-            "<^^^",
-        };
-        for (Arrows& arw : quadArrows)
-        {
-            combinations.push_back(arw);
-            while (std::next_permutation(arw.begin(), arw.end()))
-                combinations.push_back(arw);
-        }
-
-        // max movement across keypad, only a few valid combinations
-        ArrowList quintArrows {
-            // ">>^^^", // this is not a valid move
-            ">>vvv",
-            // "<<vvv", // this is not a valid move
-            "<<^^^",
-        };
-        for (Arrows& arw : quintArrows)
-        {
-            combinations.push_back(arw);
-            while (std::next_permutation(arw.begin(), arw.end()))
-                combinations.push_back(arw);
-        }
-
-        // need to add 'A' to the end of all codes
-        for (Arrows& arw : combinations)
-            arw.append("A");
-
-        return combinations;
+        return split;
     }
 
     Presses shortestSequence(const PressList& sequences)
@@ -565,21 +492,19 @@ namespace aoc21b
                 newSeq.insert(newSeq.end(), newDir.begin(), newDir.end());
             }
             currentSeq = std::move(newSeq);
+            // Presses shortest {shortestSequence(newSeq)};
+            // currentSeq = {shortest};
         }
         return shortestSequence(currentSeq);
     }
 
     template <int extraDirectionalRobots>
-    void trainArrows(ArrowMap& shortestArrows, PressMap& dirCodeMap, FullPressMap& dirSeqMap)
+    void trainArrows(const ArrowList& arrows, ArrowMap& shortestArrows, PressMap& dirCodeMap, FullPressMap& dirSeqMap)
     {
-        ArrowList arrows {generateArrowCombinations()};
-        // for (const Presses& p : arrows)
-        //     std::cout << p << '\n';
-        std::cout << "out of " << arrows.size() << '\n';
-        int counter {1};
+        // int counter {1};
         for (const Arrows& arw : arrows)
         {
-            std::cout << "\tat: " << counter++ << '\n';
+            // std::cout << "\tat: " << counter++ << '\n';
             shortestArrows[arw] = getShortestArrowSequence<extraDirectionalRobots>(arw, dirCodeMap, dirSeqMap);
         }
     }
@@ -587,21 +512,29 @@ namespace aoc21b
     CodeInt shortestSequenceSize(const PressList& sequences)
     {
         size_t min {0};
+        Presses test;
         for (const Presses& seq : sequences)
         {
             if (min == 0 || seq.size() < min)
+            {
                 min = seq.size();
+                test = seq;
+            }
         }
-        // bit of a cheat here. Do properly if this was for something bigger
+        // bit of a cheat. Do properly if this was for something bigger
+        std::cout << '\t' << test << '\n';
         return static_cast<long long>(min);
     }
 
     template <int extraDirectionalRobots>
-    CodeInt getButtonPresses(const Presses& code, ButtonMap& numCodeMap, const ArrowMap& shortestArrowSequences, PressMap& dirCodeMap, FullPressMap& dirSeqMap)
+    CodeInt getButtonPresses(const Presses& code, ButtonMap& numCodeMap, ArrowMap& shortestArrowSequences, PressMap& dirCodeMap, FullPressMap& dirSeqMap)
     {
         // start with numeric keypad
         PressList numericSequence {getNumericSequence(code, numCodeMap)};
         // std::cout << "shortest num " << shortestSequenceSize(numericSequence) << '\n';
+
+        ArrowList arrowSequences {splitIntoSequences(numericSequence)};
+        trainArrows<extraDirectionalRobots>(arrowSequences, shortestArrowSequences, dirCodeMap, dirSeqMap);
 
         // move onto directional keypads
         // use prepared shortestArrowSequences to jump to solution
@@ -624,20 +557,6 @@ namespace aoc21b
             finalSeq.push_back(seqShort);
         }
         return shortestSequenceSize(finalSeq);
-
-        // PressList currentSeq {std::move(numericSequence)};
-        // for (int r{0}; r < extraDirectionalRobots; ++r)
-        // {
-        //     PressList newSeq {};
-        //     for (const Presses& seq : currentSeq)
-        //     {
-        //         PressList newDir {getDirectionalSequence(seq, dirCodeMap, dirSeqMap)};
-        //         newSeq.insert(newSeq.end(), newDir.begin(), newDir.end());
-        //     }
-        //     currentSeq = std::move(newSeq);
-        //     // std::cout << "shortest dir " << shortestSequenceSize(currentSeq) << '\n';
-        // }
-        // return shortestSequenceSize(currentSeq);
     }
 
     CodeInt getNumericPartOfCode(const Presses& code)
@@ -646,13 +565,16 @@ namespace aoc21b
     }
 
     template <int extraDirectionalRobots>
-    CodeInt getCodeComplexity(const PressList& sequences, const ArrowMap& shortestArrowSequences, PressMap& dirCodeMap, FullPressMap& dirSeqMap)
+    CodeInt getCodeComplexity(const PressList& sequences)
     {
         CodeInt complexity {0};
         ButtonMap numCodeMap {};
+        ArrowMap shortestArrowSequences {};
+        PressMap dirCodeMap {};
+        FullPressMap dirSeqMap {};
         for (const Presses& code : sequences)
         {
-            // std::cout << "for " << code << '\n';
+            std::cout << "for " << code << '\n';
             CodeInt old {complexity};
             complexity += getButtonPresses<extraDirectionalRobots>(code, numCodeMap, shortestArrowSequences, dirCodeMap, dirSeqMap) * getNumericPartOfCode(code);
             // std::cout << "after " << (complexity - old) / getNumericPartOfCode(code) << ' ' << getNumericPartOfCode(code) << ", " << (complexity - old) << ' ' << complexity << '\n';
@@ -666,13 +588,7 @@ namespace aoc21b
         PressList sequences {};
         for (std::string_view line : lines)
             sequences.push_back(std::string(line));
-        ArrowMap shortestArrowSequences {};
-        PressMap dirCodeMap {};
-        FullPressMap dirSeqMap {};
-        // Timer timer {};
-        trainArrows<extraDirectionalRobots>(shortestArrowSequences, dirCodeMap, dirSeqMap);
-        // std::cout << timer.getDuration() << '\n';
-        return getCodeComplexity<extraDirectionalRobots>(sequences, shortestArrowSequences, dirCodeMap, dirSeqMap);
+        return getCodeComplexity<extraDirectionalRobots>(sequences);
     }
 }
 
