@@ -10,56 +10,112 @@
 #include <map>
 #include <stdexcept>
 #include <algorithm>
+#include <ranges>
+#include <set>
 
 #include <iostream>
 #include "../../shared/Timer.h"
 
 /*
 can't re-use part 1 solution as it took too long
-is there some pattern in how the complexity increases?
-or could I optimise my part 1 solution to be significantly faster?
-worth trying optimising first and see the result
-not really seeing where to
+seems like this needs solving through patterns/trends
 
-the set of moves between buttons will always be the same
-so we can use memoisation to reduce
-using buttons only really works for the first keypad
-need to use longer (full?) sequences for the directional part
+can observe a few things
+need to press 'A' after each button, so next has at least that added
+then we need to account for the directions:
+    ^ -> < -> ...
+    > -> v -> ...
+    v -> v< -> ...
+    < -> v<< -> ...
 
-need to set up partial memoisation since directional codes get longer
+we also know the number of "unit" moves needed for each direction
+    ^ : 1
+    > : 1
+    v : 2
+    < : 3
+these are fixed. It's not possible to do less for any (from 'A')
 
-the biggest slowdown seems to be the addNewArrows() function
-this copies a vector of strings then re-assigns this
-perhaps instead of collecting the string vector, we can use the map?
-e.g. add string vector to map and track what the current key (string) is
+double movement (e.g. "v<<") seems to be shorter than mixed (e.g. "<v<")
+this is because the second in the double doesn't require moving
 
-optimising doesn't seem to be the way to go - it'll take too long anyway
-need to take a different approach
-is there a way of finding a pattern in the size of the shortest sequence?
-if we can find the shortest sequence to start, we don't need combinations
-is there a way to predict/understand the shortest sequence?
-if we have <<^, <^<, ^<< - can we tell what will be shortest in n keypads?
-<<^ -> v<<AA>^A   -> v<A<AA>>^AAvA<^A>A
-<^< -> v<<A>^Av<A -> v<A<AA>>^AvA<^A>Av<A<A>>^A
-^<< -> <Av<AA     -> v<<A>>^Av<A<A>>^AA
-it appears that consecutive arrows of same type is better?
+what we need is the distance between each tile, i.e.
+    ^> : 2 (v>)
+    <v : 1 (>)
+    <A : 3 (>>^)
 
-<^ -> v<<A>^A -> v<A<AA>>^AvA<^A>A
-^< -> <Av<A   -> v<<A>>^Av<A<A>>^A
+can try this as a way to find the shortest sequence
+    ex1
+    start : <vA
+    size + 3 : to press A for each button
+    A -> < : +3
+    < -> v : +1
+    v -> A : +2
+    total : 9
+    e.g. v<<A>A>^A
 
-is this a case where it could be useful to set up things first
-i.e. run all iterations of 1-3 arrows (e.g. >, <^, vv>) at the start
-and then use that to essentially shortcut the answer
-i.e. we can find the shortest sequence after n keypads/iterations
-we can guarantee getting to any arrow (on directional keybad) in 3 arrows
-make sure to add 'A' to the end, so we can use this in the subsequent code
-the longest sequence for the numeric keypad is 5 arrows
+    ex2
+    start : >^A
+    size + 3
+    A -> > : 1
+    > -> ^ : 2
+    ^ -> A : 1
+    total : 7
+    e.g. vA<^A>A
 
-rather than setting up every permutation, use numeric sequence to decide
-saves from doing sequences that aren't used
+a question is about whether choice of direction matters
+e.g. does the choice between ^<A and <^A matter in the long term?
+    ^ : <A
+    < : v<<A
+    < -> A : >>^A
+    ^ -> a : >A
+    ^<A : <Av<A>>^A (9 = 3 + 1 + 2 + 3)
+    <^A : v<<A>^A>A (9 = 3 + 3 + 2 + 1)
 
-still takes too long, look at patterns in shortest sequences and preceding
-may be able to identify mini-sequences to exclude etc
+    the next iteration becomes either
+    <Av<A>>^A : 9 + 3 + 3 + 2 + 1 + 3 + 1 + 0 + 2 + 1 = 25
+        e.g. v<<A>>^Av<A<A>>^AvAA<^A>A
+    v<<A>^A>A : 9 + 2 + 1 + 0 + 3 + 1 + 2 + 1 + 1 + 1 = 21
+        e.g. v<A<AA>>^AvA<^A>AvA^A
+
+so the choice does matter
+the question then is: how do we know which sequence is shortest?
+we could use the equation above to get the shortest size of each sequence
+we could then keep only the shortest sequences
+we would need to show that longer sequences could never "become shorter"
+i.e. that in subsequent steps, a longer sequence translates to fewer moves
+we can first note that we don't need to look at the whole sequence
+each section is confined to ending at 'A', which resets the position
+note above that ^<A and <^A both lead to sequences with the same moves
+i.e. 2 * <, 2 * >, 1 * v, 1 * ^, 3 * A
+while the order is different, they are made up of sub-sequences e.g. v<A
+we then have a sub-problem of which order produces a shorter sequence
+
+things to change:
+    [change string vectors to int vector vectors] (leave this for now)
+    add function to calculate minimum next sequence size
+    use this function to only keep the shortest sequences
+    use this in setup to find ordering giving shortest sequences
+    apply ordering in puzzle to find shortest sequence directly
+    i.e. we only have one sequence so we're not collecting 10^10 sequences
+
+getting wrong answers for previous puzzle, with complexity too small
+need to account for not going over blank spaces
+bigger problem is it still takes too long to run
+
+can we use double memoisation - like for day 11b?
+if sequences follow a repeating pattern, then we might be able to
+    ^ : [<], [v<<], [v<, v<<, v<<], ...
+    > : [v], [v<], [v<, v<<], ...
+    v : [v<], [v<], ...
+    < : [v<<], [v<, v<<, v<<], ...
+except it's not as simple as that. We need to take sequences
+    ^> : [<, v>], [v<<, v<, v], [[v<, <, .], [v<, <], [v<]]
+    <^^ : [v<<, >^, .], [[v<, <, .], [v, <^]]
+that could work, tho also need to remember returning to 'A'
+so first layer of memoisation to get to some breakpoint / pattern
+and second layer of memoisation uses that to output size directly
+that will avoid having to build the full sequence
+a question is whether we want or can handle several sequences at the start
 */
 
 using ButtonLoc = std::pair<size_t, size_t>;
@@ -117,13 +173,21 @@ namespace aoc21b
     using Movement = std::pair<Move, int>;
     using Button = char;
     using ButtonMap = std::map<std::pair<Button, Button>, PressList>;
-    using PressMap = std::map<std::pair<Press, Press>, PressList>;
-    using FullPressMap = std::map<Presses, PressList>;
     using Index = size_t;
     using Arrow = char;
     using Arrows = std::string;
-    using ArrowMap = std::map<Arrows, Presses>;
     using ArrowList = std::vector<Arrows>;
+
+    using Buttons = std::vector<Button>;
+    using ButtonPair = std::pair<Button, Button>;
+    using ButtonDistanceMap = std::map<ButtonPair, int>;
+    using ShortestSequenceMap = std::map<Presses, Presses>;
+    using PressLists = std::vector<PressList>;
+    using PressCount = std::map<Button, int>;
+    using PressSet = std::set<Presses>;
+
+    using Memo = std::map<Presses, PressList>;
+    using MemoSize = std::map<Presses, long long>;
 
     constexpr Move getDirection(char c)
     {
@@ -173,6 +237,47 @@ namespace aoc21b
             return {{0, 0}, 0};
     }
 
+    ButtonDistanceMap getDirectionalButtonDistances()
+    {
+        ButtonDistanceMap distances {};
+        auto buttonKeyView {std::views::keys(Directional::keypadPos)};
+        Buttons buttonKeys {buttonKeyView.begin(), buttonKeyView.end()};
+        for (Button key1 : buttonKeys)
+        {
+            for (Button key2 : buttonKeys)
+            {
+                ButtonLoc button1 {Directional::keypadPos.at(key1)};
+                ButtonLoc button2 {Directional::keypadPos.at(key2)};
+                distances[{key1, key2}] = std::abs(static_cast<int>(button1.first) - static_cast<int>(button2.first)) + std::abs(static_cast<int>(button1.second) - static_cast<int>(button2.second));
+            }
+        }
+        return distances;
+    }
+
+    CodeInt getNextSequenceSize(const Presses& presses, const ButtonDistanceMap& buttonDistances)
+    {
+        // we add one 'A' for each button to press
+        CodeInt total {static_cast<CodeInt>(presses.size())};
+        for (size_t i{0}; i < presses.size(); ++i)
+        {
+            // the first button implicitly has a previous 'A'
+            if (i == 0)
+            {
+                // std::cout << presses.at(i) << '\n';
+                total += buttonDistances.at({'A', presses.at(i)});
+            }
+            // labelling as i > 0 to be explicit that i - 1 index is ok
+            else if (i > 0)
+            {
+                // std::cout << presses.at(i - 1) << ' ' << presses.at(i) << '\n';
+                total += buttonDistances.at({presses.at(i - 1), presses.at(i)});
+            }
+            else
+                throw std::out_of_range("Error: got an unexpected button press, or button pair, with no known distance.\n");
+        }
+        return total;
+    }
+
     void addSequence(Presses& presses, const Movement& movement)
     {
         for (int n{0}; n < movement.second; ++n)
@@ -196,36 +301,35 @@ namespace aoc21b
             sequences.push_back(presses);
         }
 
-        // we need to avoid the empty button space
-        if ((start.first == 0 && end.second == Numeric::keypad.size() - 1) || (start.second == Numeric::keypad.size() - 1 && end.first == 0))
+        // traverse each sequence to make sure it avoids the empty space
+        PressList finalSequences {};
+        for (const Presses& seq : sequences)
         {
-            Presses beginSeq;
-            // if going left to down right
-            if (start.first == 0)
+            ButtonLoc position {start};
+            Move previousMove {getDirection(seq.at(0))};
+            bool wentOverEmptySpace {false};
+            int moveChangeCounter {0};
+            for (Press s : seq)
             {
-                if (start.second == 0)
-                    beginSeq = "vvv";
-                else if (start.second == 1)
-                    beginSeq = "vv";
-                else if (start.second == 2)
-                    beginSeq = "v";
+                Move dir {getDirection(s)};
+                if (dir != previousMove)
+                    ++moveChangeCounter;
+                position.first += dir.first;
+                position.second += dir.second;
+                previousMove = dir;
+                // check if we've moved over the empty space
+                if (Numeric::keypad.at(position.second).at(position.first) == ' ')
+                    wentOverEmptySpace = true;
             }
-            // if going down right to up left
-            else if (end.first == 0)
+            // avoid changing direction twice or more
+            if (!wentOverEmptySpace && moveChangeCounter <= 1)
             {
-                if (start.first == 1)
-                    beginSeq = "<";
-                else if (start.first == 2)
-                    beginSeq = "<<";
+                // std::cout << '\t' << seq << '\n';
+                finalSequences.push_back(seq);
             }
-
-            auto it {std::find_if(sequences.begin(), sequences.end(), [&beginSeq](const std::string& s) {
-                return s.find(beginSeq) == 0;
-            })};
-            if (it != sequences.end())
-                sequences.erase(it);
         }
-        return sequences;
+
+        return finalSequences;
     }
 
     PressList getDirectionalPresses(ButtonLoc start, ButtonLoc end)
@@ -292,32 +396,6 @@ namespace aoc21b
         return newSequences;
     }
 
-    // trying this alternative function in case it's faster
-    void addNewArrowsInPlace(const Presses& previous, const Presses& current, FullPressMap& dirSeqMap, const PressList& arrows)
-    {
-        if (dirSeqMap.find(current) != dirSeqMap.end())
-            return;
-        
-        if (previous.empty())
-        {
-            dirSeqMap[current] = arrows;
-            return;
-        }
-
-        PressList newSequences {};
-        for (const Presses& seq : dirSeqMap.at(previous))
-        {
-            for (const Presses& newArrows : arrows)
-            {
-                Presses temp {seq};
-                temp.append(newArrows);
-                newSequences.push_back(std::move(temp));
-            }
-        }
-        dirSeqMap[current] = newSequences;
-        // std::cout << '\t' << dirSeqMap.at(previous).size() << " * " << arrows.size() << ' ' << dirSeqMap.at(current).size() << '\n';
-    }
-
     PressList getNumericSequence(const Presses& code, ButtonMap& numCodeMap)
     {
         PressList sequences {};
@@ -350,122 +428,196 @@ namespace aoc21b
         return sequences;
     }
 
-    PressList getDirectionalSequence(const Presses& prevSeq, PressMap& dirCodeMap, FullPressMap& dirSeqMap)
+    PressList getDirectionalSequence(const Presses& prevSeq, const ButtonDistanceMap& buttonDistances)
     {
-        // if we already have run the full sequence, re-use the solution
-        // this doesn't seem to activate
-        if (dirSeqMap.find(prevSeq) != dirSeqMap.end())
-            return dirSeqMap.at(prevSeq);
-
-        Presses previousStr;
-        Presses seqExtract {prevSeq};
-        Index currIndex {0};
-        while (currIndex < prevSeq.size())
+        PressList sequences {};
+        ButtonLoc position {Directional::start};
+        for (Press button : prevSeq)
         {
-            PressList arrows {};
-            bool isMatch {false};
-
-            // first check if we have an 'A', or several
-            if (seqExtract[0] == 'A')
+            // first move to the new button
+            // std::cout << '\t' << button << '\n';
+            ButtonLoc next {Directional::keypadPos.at(button)};
+            if (next != position)
             {
-                Index firstNonA {seqExtract.find_first_not_of('A')};
-                // if we have a sequence of 'A's, we can re-use that
-                arrows = {seqExtract.substr(0, firstNonA)};
-                currIndex += firstNonA;
-                isMatch = true;
+                PressList arrows {getDirectionalPresses(position, next)};
+                sequences = addNewArrows(sequences, arrows);
             }
-
-            Index latest {seqExtract.size() - 1};
-            while (!isMatch && seqExtract.rfind('A', latest) != std::string::npos)
-            {
-                // // skip if the next instruction is 'A'
-                // if (seqExtract[0] == 'A')
-                //     break;
-                Index last {seqExtract.rfind('A', latest)};
-                if (dirSeqMap.find(seqExtract.substr(0, last + 1)) != dirSeqMap.end())
-                {
-                    arrows = dirSeqMap.at(seqExtract.substr(0, last + 1));
-                    isMatch = true;
-                    currIndex += last + 1;
-                    break;
-                }
-                else
-                {
-                    if (last == 0)
-                        break;
-                    latest = last - 1;
-                }
-            }
-
-            // if the above didn't find a sequence to re-use
-            // we'll instead go up to the first 'A' and get the sequence
-            if (!isMatch)
-            {
-                Index firstA {seqExtract.find('A')};
-                Presses strUptoA {seqExtract.substr(0, firstA + 1)};
-                PressList internalSeq {};
-                ButtonLoc position {Directional::start};
-                Press previous {'A'}; // start on 'A'
-                for (Press move : strUptoA)
-                {
-                    PressList internalArrow;
-                    ButtonLoc next {Directional::keypadPos.at(move)};
-
-                    // if we've already mapped this button, re-use the answer
-                    if (dirCodeMap.find({previous, move}) != dirCodeMap.end())
-                        internalArrow = dirCodeMap.at({previous, move});
-                    else
-                    {
-                        internalArrow = getDirectionalPresses(position, next);
-                        // now press the button
-                        for (Presses& seq : internalArrow)
-                            seq.push_back('A');
-                        // store these solutions so we can re-use them later
-                        dirCodeMap[{previous, move}] = internalArrow;
-                    }
-
-                    internalSeq = addNewArrows(internalSeq, internalArrow);
-
-                    position = next;
-                    previous = move;
-                }
-                // collect sequence so we can re-use it later
-                arrows = internalSeq;
-                // dirSeqMap[strUptoA] = arrows;
-                currIndex += firstA + 1;
-            }
-
-            // sequences = addNewArrows(sequences, arrows);
-            // // collect new sequences if we don't have them already
-            // if (dirSeqMap.find(prevSeq.substr(0, currIndex)) == dirSeqMap.end())
-            //     dirSeqMap[prevSeq.substr(0, currIndex)] = sequences;
-            addNewArrowsInPlace(previousStr, prevSeq.substr(0, currIndex), dirSeqMap, arrows);
-            previousStr = prevSeq.substr(0, currIndex);
-            seqExtract = prevSeq.substr(currIndex);
+            position = next;
+            // now press the button
+            for (Presses& seq : sequences)
+                seq.push_back('A');
         }
-        // // collect sequence so we can re-use it later
-        // dirSeqMap[prevSeq] = sequences;
 
-        return dirSeqMap.at(prevSeq);
+        // drop any sequences that are too long
+        // we can get the target size of the next sequence
+        int targetSz {static_cast<int>(getNextSequenceSize(prevSeq, buttonDistances))};
+        // std::cout << "before " << sequences.size() << '\n';
+        for (auto it{sequences.begin()}; it != sequences.end();)
+        {
+            if (it->size() > targetSz)
+                it = sequences.erase(it);
+            else
+                ++it;
+        }
+        // std::cout << "after " << sequences.size() << '\n';
+
+        return sequences;
     }
 
-    PressList splitIntoSequences(const PressList& sequences)
+    PressList splitIntoSequences(const Presses& sequence)
     {
         PressList split {};
-        for (const Presses& seq : sequences)
+        Index current {0};
+        Presses word {sequence};
+        while (current < sequence.size())
         {
-            Index current {0};
-            Presses word {seq};
-            while (current < seq.size())
-            {
-                Index nextA {word.find('A')};
-                Presses nextSplit {word.substr(0, nextA + 1)};
-                split.push_back(nextSplit);
-                current += nextA + 1;
-                word = seq.substr(current);
-            }
+            Index nextA {word.find('A')};
+            Presses nextSplit {word.substr(0, nextA)};
+            split.push_back(nextSplit);
+            current += nextA + 1;
+            word = sequence.substr(current);
         }
         return split;
+    }
+
+    PressList getDirectionalShortSequences(const PressList& disallowedDirectionalSeq)
+    {
+        PressList sequences {};
+        Buttons directions {'^', '>', 'v', '<'};
+        // this is to create an object that can be re-used more easily
+        PressCount allButtons {};
+        // track which sequences we've tried already
+        PressSet tried {};
+        for (Button b : directions)
+            allButtons[b] = 0;
+        // this is a rubbish way to collect combinations
+        for (size_t sz{1}; sz <= 3; ++sz)
+        {
+            for (Button b1 : directions)
+            {
+                for (Button b2 : directions)
+                {
+                    for (Button b3 : directions)
+                    {
+                        Presses seq {""};
+                        seq.push_back(b1);
+                        if (sz > 1)
+                            seq.push_back(b2);
+                        if (sz > 2)
+                            seq.push_back(b3);
+                        if (tried.find(seq) != tried.end())
+                            continue;
+                        tried.insert(seq);
+                        // std::cout << "\t\t" << seq << '\n';
+                        
+                        PressCount pressCounts {allButtons};
+                        for (Button b : seq)
+                            pressCounts[b]++;
+                        
+                        // don't collect where vertical >1
+                        if (pressCounts.at('^') > 1 || pressCounts.at('v') > 1)
+                            continue;
+                        // don't collect where horizontal >2
+                        if (pressCounts.at('>') > 2 || pressCounts.at('<') > 2)
+                            continue;
+                        // drop sequences going over directional blank
+                        if (std::find(disallowedDirectionalSeq.begin(), disallowedDirectionalSeq.end(), seq) != disallowedDirectionalSeq.end())
+                            continue;
+                        // remove mixed vertical or horizontal
+                        if ((pressCounts.at('^') > 0 && pressCounts.at('v') > 0) || (pressCounts.at('>') > 0 && pressCounts.at('<') > 0))
+                            continue;
+                        // std::cout << '\t' << seq << '\n';
+                        
+                        sequences.push_back(seq);
+                    }
+                }
+            }
+        }
+        return sequences;
+    }
+
+    void getShortestSequences(ShortestSequenceMap& shorts, const PressList& sequences, const ButtonDistanceMap& buttonDistances, const PressList& disallowedSeq)
+    {
+        for (const Presses& s : sequences)
+        {
+            if (shorts.find(s) != shorts.end())
+                continue;
+            
+            // std::cout << s << '\n';
+            // to get permutations, need to sort string lexicographically
+            Presses sorted {s};
+            std::sort(sorted.begin(), sorted.end());
+            PressList relatedSeq {};
+            do
+            {
+                relatedSeq.push_back(sorted);
+            } while (std::next_permutation(sorted.begin(), sorted.end()));
+            
+            Presses shortest {};
+            PressLists current {};
+            for (const Presses start : relatedSeq)
+            {
+                Presses withA {start};
+                withA.append("A");
+                current.push_back({withA});
+            }
+            bool onlyOneShortest {false};
+            while (!onlyOneShortest)
+            {
+                PressLists next {};
+                int shortCount {0};
+                size_t shortSize {0};
+                for (size_t i{0}; i < current.size(); ++i)
+                {
+                    PressList innerList {};
+                    for (const Presses& currSeq : current.at(i))
+                    {
+                        PressList newSeq {getDirectionalSequence(currSeq, buttonDistances)};
+                        // let's only keep the shortest sequences
+                        PressList refinedList {};
+                        size_t shor {0};
+                        for (const Presses& ns : newSeq)
+                        {
+                            if (shor == 0 || ns.size() < shor)
+                            {
+                                shor = ns.size();
+                                refinedList = {ns};
+                                // if (std::find(relatedSeq.begin(), relatedSeq.end(), "<<^^") != relatedSeq.end())
+                                //     std::cout << relatedSeq.at(i) << ' ' << ns << '\n';
+                            }
+                            else if (ns.size() == shor)
+                            {
+                                refinedList.push_back(ns);
+                                // if (std::find(relatedSeq.begin(), relatedSeq.end(), "<<^^") != relatedSeq.end())
+                                //     std::cout << relatedSeq.at(i) << ' ' << ns << '\n';
+                            }
+                        }
+                        innerList.insert(innerList.end(), refinedList.begin(), refinedList.end());
+                    }
+                    next.push_back(innerList);
+                    // collect info on the shortest sequence
+                    if ((shortSize == 0 || innerList.at(0).size() < shortSize) && std::find(disallowedSeq.begin(), disallowedSeq.end(), relatedSeq.at(i)) == disallowedSeq.end())
+                    {
+                        shortSize = innerList.at(0).size();
+                        shortCount = 0;
+                        shortest = relatedSeq.at(i);
+                    }
+                    else if (innerList.at(0).size() == shortSize && std::find(disallowedSeq.begin(), disallowedSeq.end(), relatedSeq.at(i)) == disallowedSeq.end())
+                    {
+                        shortCount += 1;
+                    }
+                }
+                current = next;
+
+                if (shortCount == 0)
+                    onlyOneShortest = true;
+            }
+
+            for (const Presses& seq : relatedSeq)
+            {
+                shorts[seq] = shortest;
+            }
+        }
     }
 
     Presses shortestSequence(const PressList& sequences)
@@ -479,82 +631,138 @@ namespace aoc21b
         return shortest;
     }
 
-    template <int extraDirectionalRobots>
-    Presses getShortestArrowSequence(const Arrows& arrow, PressMap& dirCodeMap, FullPressMap& dirSeqMap)
-    {
-        PressList currentSeq {arrow};
-        for (int r{0}; r < extraDirectionalRobots; ++r)
-        {
-            PressList newSeq {};
-            for (const Presses& seq : currentSeq)
-            {
-                PressList newDir {getDirectionalSequence(seq, dirCodeMap, dirSeqMap)};
-                newSeq.insert(newSeq.end(), newDir.begin(), newDir.end());
-            }
-            currentSeq = std::move(newSeq);
-            // Presses shortest {shortestSequence(newSeq)};
-            // currentSeq = {shortest};
-        }
-        return shortestSequence(currentSeq);
-    }
-
-    template <int extraDirectionalRobots>
-    void trainArrows(const ArrowList& arrows, ArrowMap& shortestArrows, PressMap& dirCodeMap, FullPressMap& dirSeqMap)
-    {
-        // int counter {1};
-        for (const Arrows& arw : arrows)
-        {
-            // std::cout << "\tat: " << counter++ << '\n';
-            shortestArrows[arw] = getShortestArrowSequence<extraDirectionalRobots>(arw, dirCodeMap, dirSeqMap);
-        }
-    }
-
     CodeInt shortestSequenceSize(const PressList& sequences)
     {
         size_t min {0};
-        Presses test;
+        // Presses shortest {};
         for (const Presses& seq : sequences)
         {
             if (min == 0 || seq.size() < min)
             {
                 min = seq.size();
-                test = seq;
+                // shortest = seq;
             }
         }
-        // bit of a cheat. Do properly if this was for something bigger
-        std::cout << '\t' << test << '\n';
-        return static_cast<long long>(min);
+        // std::cout << "final short " << shortest << '\n';
+        return static_cast<CodeInt>(min);
     }
 
     template <int extraDirectionalRobots>
-    CodeInt getButtonPresses(const Presses& code, ButtonMap& numCodeMap, ArrowMap& shortestArrowSequences, PressMap& dirCodeMap, FullPressMap& dirSeqMap)
+    CodeInt getButtonPresses(const Presses& code, ButtonMap& numCodeMap, const ButtonDistanceMap& buttonDistances, ShortestSequenceMap& shortestSeq)
     {
         // start with numeric keypad
         PressList numericSequence {getNumericSequence(code, numCodeMap)};
-        // std::cout << "shortest num " << shortestSequenceSize(numericSequence) << '\n';
 
-        ArrowList arrowSequences {splitIntoSequences(numericSequence)};
-        trainArrows<extraDirectionalRobots>(arrowSequences, shortestArrowSequences, dirCodeMap, dirSeqMap);
+        // collect numeric splits
+        PressList disallowedNumericSeq { "<<^^^", "<<vvv", ">>^^^", "^^^>>", "vvv>>" };
+        PressList numericSplits {};
+        for (const Presses& num : numericSequence)
+        {
+            PressList numSplits {splitIntoSequences(num)};
+            numericSplits.insert(numericSplits.end(), numSplits.begin(), numSplits.end());
+        }
+        // Timer timer2 {};
+        getShortestSequences(shortestSeq, numericSplits, buttonDistances, disallowedNumericSeq);
+        // std::cout << timer2.getDuration() << '\n';
+        // for (auto [k,v] : shortestSeq)
+        //     std::cout << k << ": " << v << '\n';
 
         // move onto directional keypads
-        // use prepared shortestArrowSequences to jump to solution
-        PressList finalSeq {};
-        for (const Presses& numSeq : numericSequence)
+        PressList finalSeq {numericSequence};
+        for (int loop{0}; loop < extraDirectionalRobots; ++loop)
         {
-            Presses seqShort;
-            Index currIndex {0};
-            // std::cout << "seq: " << numSeq << '\n';
-            while (currIndex < numSeq.size())
+            PressList shortestList {};
+            size_t shortestSz {0};
+            for (const Presses& pr : finalSeq)
             {
-                Index nextA {numSeq.find('A', currIndex)};
-                // std::cout << "looking for " << numSeq.substr(currIndex, (nextA + 1) - currIndex) << ' ' << currIndex << '\n';
-                // std::cout << std::boolalpha;
-                // std::cout << "result: " << (shortestArrowSequences.find(numSeq.substr(currIndex, (nextA + 1) - currIndex)) != shortestArrowSequences.end()) << '\n';
-                seqShort += shortestArrowSequences.at(numSeq.substr(currIndex, (nextA + 1) - currIndex));
-                // std::cout << "test\n";
-                currIndex = nextA + 1;
+                if (shortestSz == 0 || pr.size() < shortestSz)
+                {
+                    shortestList = {pr};
+                    shortestSz = pr.size();
+                }
+                else if (pr.size() == shortestSz)
+                {
+                    shortestList.push_back(pr);
+                }
             }
-            finalSeq.push_back(seqShort);
+            // std::cout << "shortestList " << shortestList.size() << '\n';
+            
+            PressSet uniqueNext {};
+            for (const Presses& sh : shortestList)
+            {
+                PressList shortestSplit {splitIntoSequences(sh)};
+                Presses fixedShortest {};
+                for (const Presses& split : shortestSplit)
+                {
+                    // std::cout << split << '\n';
+                    // need to handle where there's consecutive 'A's
+                    if (split != "")
+                        fixedShortest.append(shortestSeq.at(split));
+                    // add back the 'A' we took off in splitIntoSequences()
+                    fixedShortest.append("A");
+                }
+                uniqueNext.insert(fixedShortest);
+            }
+            PressList nextStage {uniqueNext.begin(), uniqueNext.end()};
+            // std::cout << "next stg " << nextStage.size() << '\n';
+
+            PressList next {};
+            for (const Presses& seq : finalSeq)
+            {
+                PressList newDir {getDirectionalSequence(seq, buttonDistances)};
+                next.insert(next.end(), newDir.begin(), newDir.end());
+            }
+            finalSeq = next;
+
+            // // we'll only take the shortest sequence
+            // // but only do this after the first loop
+            // // because the numeric keypad adds complexity
+            // if (loop == 0)
+            // {
+            //     PressList next {};
+            //     for (const Presses& seq : finalSeq)
+            //     {
+            //         std::cout << '\t' << seq << '\n';
+            //         PressList newDir {getDirectionalSequence(seq, buttonDistances)};
+            //         next.insert(next.end(), newDir.begin(), newDir.end());
+            //     }
+            //     finalSeq = next;
+            // }
+            // else
+            // {
+            //     Presses shortest {};
+            //     size_t shortestSz {0};
+            //     for (const Presses& pr : finalSeq)
+            //     {
+            //         if (shortestSz == 0 || pr.size() < shortestSz)
+            //         {
+            //             shortest = pr;
+            //             shortestSz = pr.size();
+            //         }
+            //     }
+                
+            //     std::cout << "before " << shortest << '\n';
+            //     // adjust this using the shortest seqs from buttonDistances
+            //     PressList shortestSplit {splitIntoSequences(shortest)};
+            //     Presses fixedShortest {};
+            //     for (const Presses& split : shortestSplit)
+            //     {
+            //         // std::cout << split << '\n';
+            //         // need to handle where there's consecutive 'A's
+            //         if (split != "")
+            //             fixedShortest.append(shortestSeq.at(split));
+            //         // add back the 'A' we took off in splitIntoSequences()
+            //         fixedShortest.append("A");
+            //     }
+            //     std::cout << "after " << fixedShortest << '\n';
+
+            //     finalSeq = {fixedShortest};
+
+            //     PressList newDir {getDirectionalSequence(fixedShortest, buttonDistances)};
+
+            //     finalSeq = newDir;
+            // }
+            // std::cout << finalSeq.size() << '\n';
         }
         return shortestSequenceSize(finalSeq);
     }
@@ -569,15 +777,24 @@ namespace aoc21b
     {
         CodeInt complexity {0};
         ButtonMap numCodeMap {};
-        ArrowMap shortestArrowSequences {};
-        PressMap dirCodeMap {};
-        FullPressMap dirSeqMap {};
+        // prepare this so we have distances between directional buttons
+        ButtonDistanceMap buttonDistances {getDirectionalButtonDistances()};
+        // set up order of directions giving shortest sequences
+        // Timer timer1 {};
+        PressList disallowedDirectionalSeq { "<<^", "<^<", "^<<", "<<v", ">>v", ">v>", "v>>" };
+        PressList directionalShorts {getDirectionalShortSequences(disallowedDirectionalSeq)};
+        ShortestSequenceMap shortestSeq {};
+        getShortestSequences(shortestSeq, directionalShorts, buttonDistances, disallowedDirectionalSeq);
+        // std::cout << timer1.getDuration() << '\n';
+        // for (auto [k,v] : shortestSeq)
+        //     std::cout << k << ' ' << v << '\n';
         for (const Presses& code : sequences)
         {
             std::cout << "for " << code << '\n';
             CodeInt old {complexity};
-            complexity += getButtonPresses<extraDirectionalRobots>(code, numCodeMap, shortestArrowSequences, dirCodeMap, dirSeqMap) * getNumericPartOfCode(code);
-            // std::cout << "after " << (complexity - old) / getNumericPartOfCode(code) << ' ' << getNumericPartOfCode(code) << ", " << (complexity - old) << ' ' << complexity << '\n';
+            // Timer timer3 {};
+            complexity += getButtonPresses<extraDirectionalRobots>(code, numCodeMap, buttonDistances, shortestSeq) * getNumericPartOfCode(code);
+            // std::cout << timer3.getDuration() << '\n';
         }
         return complexity;
     }
