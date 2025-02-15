@@ -119,6 +119,10 @@ that will avoid having to build the full sequence
 the two layers of memoisation are speeding up things hugely
 only issue now is getting the wrong answer
 need to test getting solutions with the old approach vs this new one
+
+have the two layers of memoisation set up and working beautifully
+able to match results compared to the previous approach
+but the answer is wrong...
 */
 
 using ButtonLoc = std::pair<size_t, size_t>;
@@ -691,6 +695,14 @@ namespace aoc21b
         return memoSize;
     }
 
+    CodeInt combineAndGetSequenceSize(const PressList& seqSplit)
+    {
+        Presses sequence {};
+        for (const Presses& seq : seqSplit)
+            sequence.append(seq);
+        return static_cast<CodeInt>(sequence.size());
+    }
+
     template <int extraDirectionalRobots>
     CodeInt getButtonPresses(const Presses& code, ButtonMap& numCodeMap, const ButtonDistanceMap& buttonDistances, ShortestSequenceMap& shortestSeq, Memo& memo, const MemoSize& memoSize)
     {
@@ -723,6 +735,9 @@ namespace aoc21b
             ++index;
         }
 
+        if (extraDirectionalRobots == 0)
+            return combineAndGetSequenceSize(finalSeq);
+
         PressList next {};
         for (const Presses& seq : finalSeq)
         {
@@ -748,23 +763,32 @@ namespace aoc21b
         }
         finalSeq = next;
 
+        if (extraDirectionalRobots == 1)
+            return combineAndGetSequenceSize(finalSeq);
+
         // we need to use the second layer of memoisation for the rest
-        CodeInt finalSize {0};
         SequenceCount currentCount {};
+        // need to set up the map
+        // but this also counts as the second loop
         for (const Presses& seq : finalSeq)
         {
             currentCount[seq]++;
         }
-        for (int loop{1}; loop < extraDirectionalRobots; ++loop)
+        for (int loop{2}; loop < extraDirectionalRobots; ++loop)
         {
             SequenceCount nextCount {};
             for (const auto& [key, val] : currentCount)
             {
-                finalSize += static_cast<CodeInt>(val * memoSize.at(key));
                 for (const Presses& seq : memo.at(key))
                     nextCount[seq] += val;
             }
             currentCount = nextCount;
+        }
+
+        CodeInt finalSize {0};
+        for (const auto& [key, val] : currentCount)
+        {
+            finalSize += static_cast<CodeInt>(val * memoSize.at(key));
         }
         return finalSize;
     }
