@@ -120,9 +120,16 @@ the two layers of memoisation are speeding up things hugely
 only issue now is getting the wrong answer
 need to test getting solutions with the old approach vs this new one
 
-have the two layers of memoisation set up and working beautifully
-able to match results compared to the previous approach
-but the answer is wrong...
+found an error in finding shortest sequences
+was not clearing vector when getting shorter sequences
+this causes the script to take too long to run
+
+instead, try logic of which direction might be shorter (got hint)
+the shortest sequences produced by the basic directions:
+    >A : [vA, ^A], [v<A, >^A, <A, >A], ...
+    ^A : [<A, >A], [v<<A, >>^A, vA, ^A], ...
+    vA : [v<A, >^A], [v<A, <A, >>^A, vA, A, <^A, >A], ...
+    <A : [v<<A, >>^A], [v<A, <A, A, >>^A, vA, A, <^A, >A], ...
 */
 
 using ButtonLoc = std::pair<size_t, size_t>;
@@ -359,29 +366,49 @@ namespace aoc21b
         }
 
         // we need to avoid the empty button space
-        if ((start.second == 0 && end.first == 0) || (start.first == 0 && end.second == 0))
+        for (auto it{sequences.begin()}; it != sequences.end(); )
         {
-            Presses beginSeq;
-            // if going up right to down left
-            if (end.first == 0)
+            bool wentOverEmptySpace {false};
+            ButtonLoc current {start};
+            for (Press dir : *it)
             {
-                if (start.first == 1)
-                    beginSeq = "<";
-                else if (start.first == 2)
-                    beginSeq = "<<";
-            }
-            // if going down left to up right
-            else if (start.first == 0)
-            {
-                beginSeq = "^";
+                Move move {getDirection(dir)};
+                current.first += move.first;
+                current.second += move.second;
+                if (Directional::keypad.at(current.second).at(current.first) == ' ')
+                    wentOverEmptySpace = true;
             }
 
-            auto it {std::find_if(sequences.begin(), sequences.end(), [&beginSeq](const std::string& s) {
-                return s.find(beginSeq) == 0;
-            })};
-            if (it != sequences.end())
-                sequences.erase(it);
+            // drop the sequence if it goes over the empty space
+            if (wentOverEmptySpace)
+                it = sequences.erase(it);
+            else
+                ++it;
         }
+
+        // if ((start.second == 0 && end.first == 0) || (start.first == 0 && end.second == 0))
+        // {
+        //     Presses beginSeq;
+        //     // if going up right to down left
+        //     if (end.first == 0)
+        //     {
+        //         if (start.first == 1)
+        //             beginSeq = "<";
+        //         else if (start.first == 2)
+        //             beginSeq = "<<";
+        //     }
+        //     // if going down left to up right
+        //     else if (start.first == 0)
+        //     {
+        //         beginSeq = "^";
+        //     }
+
+        //     auto it {std::find_if(sequences.begin(), sequences.end(), [&beginSeq](const std::string& s) {
+        //         return s.find(beginSeq) == 0;
+        //     })};
+        //     if (it != sequences.end())
+        //         sequences.erase(it);
+        // }
         return sequences;
     }
 
@@ -488,6 +515,12 @@ namespace aoc21b
         return split;
     }
 
+    // bool isBetterOrder(const Presses& seq1, const Presses& seq2)
+    // {
+    //     // we know that the sequences
+    //     if (seq1.at(0))
+    // }
+
     PressList getDirectionalShortSequences(const PressList& disallowedDirectionalSeq)
     {
         PressList sequences {};
@@ -542,6 +575,7 @@ namespace aoc21b
         return sequences;
     }
 
+    // only for directional keypad sequences
     void getShortestSequences(ShortestSequenceMap& shorts, const PressList& sequences, const ButtonDistanceMap& buttonDistances, const PressList& disallowedSeq)
     {
         for (const Presses& s : sequences)
@@ -574,34 +608,44 @@ namespace aoc21b
                 size_t shortSize {0};
                 for (size_t i{0}; i < current.size(); ++i)
                 {
+                    // std::cout << i << ' ' << current.size() << ' ' << relatedSeq.at(i) << '\n';
                     PressList innerList {};
+                    // let's only keep the shortest sequence
+                    size_t shor {0};
                     for (const Presses& currSeq : current.at(i))
                     {
                         PressList newSeq {getDirectionalSequence(currSeq, buttonDistances)};
-                        // let's only keep the shortest sequences
                         PressList refinedList {};
-                        size_t shor {0};
                         for (const Presses& ns : newSeq)
                         {
                             if (shor == 0 || ns.size() < shor)
                             {
                                 shor = ns.size();
-                                refinedList = {ns};
+                                refinedList.clear();
+                                refinedList.push_back(ns);
+                                std::cout << '\t' << ns << ' ' << ns.size() << '\n';
                             }
                             else if (ns.size() == shor)
                             {
                                 refinedList.push_back(ns);
                             }
                         }
+                        // for (auto il : innerList)
+                        //     std::cout << '\t' << il.size() << '\n';
+                        if (innerList.size() > 0 && shor < innerList.at(0).size())
+                            innerList.clear();
                         innerList.insert(innerList.end(), refinedList.begin(), refinedList.end());
                     }
                     next.push_back(innerList);
+                    std::cout << "shortest: " << innerList.at(0).size() << '\n';
                     // collect info on the shortest sequence
                     if ((shortSize == 0 || innerList.at(0).size() < shortSize) && std::find(disallowedSeq.begin(), disallowedSeq.end(), relatedSeq.at(i)) == disallowedSeq.end())
                     {
                         shortSize = innerList.at(0).size();
                         shortCount = 0;
                         shortest = relatedSeq.at(i);
+                        // std::cout << '\t' << i << ' ' << relatedSeq.size() << ' ' << innerList.size() << '\n';
+                        // std::cout << relatedSeq.at(i) << '\n';
                     }
                     else if (innerList.at(0).size() == shortSize && std::find(disallowedSeq.begin(), disallowedSeq.end(), relatedSeq.at(i)) == disallowedSeq.end())
                     {
@@ -700,11 +744,26 @@ namespace aoc21b
         Presses sequence {};
         for (const Presses& seq : seqSplit)
             sequence.append(seq);
+        std::cout << "final: " << sequence << '\n';
         return static_cast<CodeInt>(sequence.size());
     }
 
+    bool doesNotPassOverEmptySpace(Button current, const Presses& seq)
+    {
+        ButtonLoc currLoc {Directional::keypadPos.at(current)};
+        for (Press dir : seq)
+        {
+            Move move {getDirection(dir)};
+            currLoc.first += move.first;
+            currLoc.second += move.second;
+            if (Directional::keypad.at(currLoc.second).at(currLoc.first) == ' ')
+                return false;
+        }
+        return true;
+    }
+
     template <int extraDirectionalRobots>
-    CodeInt getButtonPresses(const Presses& code, ButtonMap& numCodeMap, const ButtonDistanceMap& buttonDistances, ShortestSequenceMap& shortestSeq, Memo& memo, const MemoSize& memoSize)
+    CodeInt getButtonPresses(const Presses& code, ButtonMap& numCodeMap, const ButtonDistanceMap& buttonDistances, ShortestSequenceMap& shortestSeq, const Memo& memo, const MemoSize& memoSize)
     {
         // start with numeric keypad
         // we need a list of sequences not to change later
@@ -720,10 +779,8 @@ namespace aoc21b
             numericSplits.insert(numericSplits.end(), numSplits.begin(), numSplits.end());
         }
         getShortestSequences(shortestSeq, numericSplits, buttonDistances, disallowedNumericSeq);
-        setupMemo(memo, shortestSeq, buttonDistances);
 
         // move onto directional keypads
-        // PressList finalSeq {numericSequence};
         // if we prepare the initial numeric sequence, the rest should work
         PressList finalSeq {splitIntoSequences(numericSequence.at(0))};
         size_t index {0};
@@ -751,11 +808,19 @@ namespace aoc21b
             {
                 PressList nextSeq {getDirectionalSequence(seq, buttonDistances)};
                 PressList nextShortestSeq {splitIntoSequences(nextSeq.at(0))};
+                // track which buttons we're moving between
+                Button current {'A'};
+                size_t nextIndex {0};
                 for (Presses& split : nextShortestSeq)
                 {
-                    if (split != "")
+                    // std::cout << "before: " << split << '\n';
+                    if (split != "" && doesNotPassOverEmptySpace(current, shortestSeq.at(split)))
                         split = shortestSeq.at(split);
+                    // std::cout << "after: " << split << '\n';
                     split.append("A");
+
+                    current = seq.at(nextIndex);
+                    ++nextIndex;
                 }
 
                 next.insert(next.end(), nextShortestSeq.begin(), nextShortestSeq.end());
@@ -789,7 +854,9 @@ namespace aoc21b
         for (const auto& [key, val] : currentCount)
         {
             finalSize += static_cast<CodeInt>(val * memoSize.at(key));
+            std::cout << key << ": " << val << '\n';
         }
+        std::cout << "finalSize: " << finalSize << '\n';
         return finalSize;
     }
 
@@ -812,11 +879,22 @@ namespace aoc21b
         PressList directionalShorts {getDirectionalShortSequences(disallowedDirectionalSeq)};
         ShortestSequenceMap shortestSeq {};
         getShortestSequences(shortestSeq, directionalShorts, buttonDistances, disallowedDirectionalSeq);
+        for (const auto& [k, v] : shortestSeq)
+            std::cout << k << ": " << v << '\n';
 
         // set up first layer of memoisation
         Memo memo {};
         memo["A"] = {"A"};
+        // add this for the instance where we move from ^ to <
+        memo["v<A"] = {"<vA", "<A", ">>^A"};
         setupMemo(memo, shortestSeq, buttonDistances);
+        // for (const auto& [k, v] : memo)
+        // {
+        //     std::cout << k << ": ";
+        //     for (const auto& w : v)
+        //         std::cout << w << ", ";
+        //     std::cout << '\n';
+        // }
 
         // set up second layer of memoisation
         // this is the number of button presses associated with a sequence
@@ -824,7 +902,7 @@ namespace aoc21b
 
         for (const Presses& code : sequences)
         {
-            CodeInt old {complexity};
+            std::cout << "for " << code << '\n';
             complexity += getButtonPresses<extraDirectionalRobots>(code, numCodeMap, buttonDistances, shortestSeq, memo, memoSize) * getNumericPartOfCode(code);
         }
         return complexity;
