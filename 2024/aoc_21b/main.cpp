@@ -21,7 +21,7 @@ int main()
     constexpr std::size_t testLength {StringUtils::length(testInput)};
     constexpr std::array<std::string_view, testLength> testLines {StringUtils::split<testLength>(testInput)};
 
-    constexpr int extraDirectionalRobots {2};
+    constexpr int extraDirectionalRobots {25};
     // aoc21b::CodeInt complexity {aoc21b::parseAndGetCodeComplexity<testLength, extraDirectionalRobots>(testLines)};
     aoc21b::CodeInt complexity {aoc21b::parseAndGetCodeComplexity<length, extraDirectionalRobots>(lines)};
     std::cout << "sum of complexities: " << complexity << '\n';
