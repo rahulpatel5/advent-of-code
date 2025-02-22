@@ -57,11 +57,33 @@ namespace aoc5b
         }
     }
 
-    int getMiddleNumber(const Updates& updates)
+    Updates correctPageOrder(const Updates& updates, const Rules& rules)
+    {
+        Updates corrected {updates};
+        // we want to apply a sorting algorithm
+        for (size_t start{0}; start < corrected.size(); ++start)
+        {
+            size_t correctIndex {start};
+            for (size_t next{start + 1}; next < corrected.size(); ++next)
+            {
+                if (rules.at(corrected.at(next)).find(corrected.at(correctIndex)) != rules.at(corrected.at(next)).end())
+                {
+                    correctIndex = next;
+                }
+            }
+            std::swap(corrected[start], corrected[correctIndex]);
+        }
+        return corrected;
+    }
+
+    int correctOrderAndGetMiddleNumber(const Updates& updates, const Rules& rules)
     {
         assert(updates.size() % 2 != 0 && "Error: got an unexpected even number of page numbers while looking for middle page.\n");
-        size_t middleIndex {(updates.size() - 1) / 2};
-        return updates.at(middleIndex);
+
+        Updates corrected {correctPageOrder(updates, rules)};
+
+        size_t middleIndex {(corrected.size() - 1) / 2};
+        return corrected.at(middleIndex);
     }
 
     int findCorrectUpdatesAndGetMiddleNumber(const Rules& rules, const UpdateLists& updateLists)
@@ -90,9 +112,9 @@ namespace aoc5b
                 previous.insert(page);
             }
 
-            if (isCorrectOrder)
+            if (!isCorrectOrder)
             {
-                sum += getMiddleNumber(updates);
+                sum += correctOrderAndGetMiddleNumber(updates, rules);
             }
         }
 
