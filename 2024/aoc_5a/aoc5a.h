@@ -9,7 +9,7 @@
 namespace aoc5a
 {
     template <std::size_t N>
-    std::vector<std::pair<int, int>> readOrderRules(std::array<std::string_view, N> lines)
+    std::vector<std::pair<int, int>> readOrderRules(const std::array<std::string_view, N>& lines)
     {
         std::vector<std::pair<int, int>> rules {};
         
@@ -28,7 +28,7 @@ namespace aoc5a
     }
 
     template <std::size_t N>
-    std::vector<std::vector<int>> readPageUpdates(std::array<std::string_view, N> lines)
+    std::vector<std::vector<int>> readPageUpdates(const std::array<std::string_view, N>& lines)
     {
         std::vector<std::vector<int>> updates {};
 
@@ -55,7 +55,7 @@ namespace aoc5a
         return updates;
     }
 
-    bool isUpdateValid(std::vector<int> update, std::vector<std::pair<int, int>> rules)
+    bool isUpdateValid(const std::vector<int>& update, const std::vector<std::pair<int, int>>& rules)
     {
         for (const std::pair<int, int>& rule : rules)
         {
@@ -71,13 +71,13 @@ namespace aoc5a
         return true;
     }
 
-    int getMiddleNumber(std::vector<int> update)
+    int getMiddleNumber(const std::vector<int>& update)
     {
         size_t middle {(update.size() - 1) / 2};
         return update.at(middle);
     }
 
-    int applyRulesToUpdates(std::vector<std::pair<int, int>> rules, std::vector<std::vector<int>> updates)
+    int applyRulesToUpdates(const std::vector<std::pair<int, int>>& rules, const std::vector<std::vector<int>>& updates)
     {
         int sum {0};
 
@@ -91,7 +91,7 @@ namespace aoc5a
     }
 
     template <std::size_t N>
-    int parseAndSumMiddlePages(std::array<std::string_view, N> lines)
+    int parseAndSumMiddlePages(const std::array<std::string_view, N>& lines)
     {
         std::vector<std::pair<int, int>> orderRules {readOrderRules<N>(lines)};
         std::vector<std::vector<int>> pageUpdates {readPageUpdates<N>(lines)};
