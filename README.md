@@ -1,7 +1,12 @@
 # advent-of-code
 Attempted solutions to Advent of Code challenges in C++.
 
-Time taken (runtime) for each solution, to the nearest 0.001s if under 1 second:
+Time taken (runtime) for each solution, to the nearest 0.001s if under 1 second.
+
+Note: runtime uses the default g++ generated .exe file, i.e. not using optimisations such as -O2.
+```
+g++ main.cpp -std=c++20 -o [.exe filename]
+```
 
 ## **2015**
 
