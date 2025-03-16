@@ -10,7 +10,13 @@ namespace StringUtils
     constexpr std::size_t length(std::string_view input)
     {
         return std::count(input.begin(), input.end(), '\n');
+    }
 
+    // gets the width of the first line
+    constexpr std::size_t width(std::string_view input)
+    {
+        std::size_t endLine {input.find('\n')};
+        return input.substr(0, endLine).size();
     }
 
     template <std::size_t N>
