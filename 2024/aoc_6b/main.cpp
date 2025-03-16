@@ -10,6 +10,7 @@ int main()
     
     constexpr std::string_view input {input::input};
     constexpr std::size_t length {StringUtils::length(input)};
+    constexpr std::size_t width {StringUtils::width(input)};
     constexpr std::array<std::string_view, length> lines {StringUtils::split<length>(input)};
     
     constexpr std::string_view testInput {R"(....#.....
@@ -24,9 +25,10 @@ int main()
 ......#...
 )"};
     constexpr std::size_t testLength {StringUtils::length(testInput)};
+    constexpr std::size_t testWidth {StringUtils::width(testInput)};
     constexpr std::array<std::string_view, testLength> testLines {StringUtils::split<testLength>(testInput)};
     
-    int count {aoc6b::parseAndCountDistinctLoops<length>(lines)};
+    aoc6b::PosInt count {aoc6b::parseAndCountDistinctLoops<length, width>(lines)};
     std::cout << "number of distinct loops: " << count << '\n';
     
     auto stopTime {std::chrono::high_resolution_clock::now()};
