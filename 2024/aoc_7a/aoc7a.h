@@ -1,22 +1,23 @@
 #ifndef AOC7A_H
 #define AOC7A_H
 
-#include "permutation.h"
 #include <string_view>
 #include <array>
 #include <vector>
 #include <string>
+#include <algorithm>
 
 /*
 extract test values and (input) numbers
-create permutations of * and +
-iterate permutations and count how many pass (at least once)
+
+create permutations of * and +, but ad hoc
+means less memory use if stopping before using all permutations
 */
 
 namespace aoc7a
 {
     template <std::size_t N>
-    std::array<long long, N> getTestValues(std::array<std::string_view, N> lines)
+    std::array<long long, N> getTestValues(const std::array<std::string_view, N>& lines)
     {
         std::array<long long, N> testVals {};
 
@@ -31,7 +32,7 @@ namespace aoc7a
     }
 
     template <std::size_t N>
-    std::array<std::vector<int>, N> getNumbers(std::array<std::string_view, N> lines)
+    std::array<std::vector<int>, N> getNumbers(const std::array<std::string_view, N>& lines)
     {
         std::array<std::vector<int>, N> outerNumbers {};
 
@@ -55,44 +56,82 @@ namespace aoc7a
         return outerNumbers;
     }
 
-    bool performCalculation(long long testValue, std::vector<int> numbers, std::vector<std::vector<char>> permutations)
+    bool performCalculation(long long testValue, const std::vector<int>& numbers)
     {
-        for (std::vector<char> permutation : permutations)
+        // initial check that all multiplication is enough
+        long long maxValue {numbers.at(0)};
+        for (size_t fin{1}; fin < numbers.size(); ++fin)
         {
-            long long solution {};
-            for (size_t i{0}; i < permutation.size(); ++i)
+            // handle unique situation where adding 1 does more than mult
+            if (numbers.at(fin) == 1)
+                maxValue += 1;
+            else
+                maxValue *= numbers.at(fin);
+        }
+        if (maxValue < testValue)
+            return false;
+        else if (maxValue == testValue)
+            return true;
+
+        // we need operators to apply
+        // we'll use all + as default, as * has a lower ASCII value
+        std::vector<char> permutation {};
+        for (size_t i{1}; i < numbers.size(); ++i)
+            permutation.push_back('+');
+
+        bool firstLoop {true};
+        for (int j{-1}; j < static_cast<int>(permutation.size()); ++j)
+        {
+            if (j > -1)
+                permutation[j] = '*';
+            std::vector<char> copyPermutation {permutation};
+
+            do
             {
-                if (i == 0)
-                    solution = numbers.at(i);
-                if (permutation.at(i) == '+')
-                    solution += numbers.at(i + 1);
-                else if (permutation.at(i) == '*')
-                    solution *= numbers.at(i + 1);
-            }
-            if (solution == testValue)
-                return true;
+                long long solution {};
+                for (size_t i{0}; i < copyPermutation.size(); ++i)
+                {
+                    if (i == 0)
+                        solution = numbers.at(i);
+                    if (copyPermutation.at(i) == '+')
+                        solution += numbers.at(i + 1);
+                    else if (copyPermutation.at(i) == '*')
+                        solution *= numbers.at(i + 1);
+                    
+                    if (solution > testValue)
+                        break;
+                    }
+                if (solution == testValue)
+                    return true;
+                
+                // first loop is all adding. If that's too large, then false
+                if (firstLoop)
+                {
+                    if (solution > testValue)
+                        return false;
+                    firstLoop = false;
+                }
+            } while (std::next_permutation(copyPermutation.begin(), copyPermutation.end()));
         }
 
         return false;
     }
 
     template <std::size_t N>
-    std::vector<long long> findTestPasses(std::array<long long, N> testValues, std::array<std::vector<int>, N> numbers)
+    std::vector<long long> findTestPasses(const std::array<long long, N>& testValues, const std::array<std::vector<int>, N>& numbers)
     {
         std::vector<long long> successes {};
 
         for (size_t i{0}; i < testValues.size(); ++i)
         {
-            std::vector<std::vector<char>> permutations {permutation::generate(numbers.at(i))};
-
-            if (performCalculation(testValues.at(i), numbers.at(i), permutations))
+            if (performCalculation(testValues.at(i), numbers.at(i)))
                 successes.push_back(testValues.at(i));
         }
 
         return successes;
     }
 
-    long long sumSuccesses(std::vector<long long> successes)
+    long long sumSuccesses(const std::vector<long long>& successes)
     {
         long long sum {0};
         for (long long success : successes)
@@ -103,7 +142,7 @@ namespace aoc7a
     }
 
     template <std::size_t N>
-    long long parseAndCountTests(std::array<std::string_view, N> lines)
+    long long parseAndCountTests(const std::array<std::string_view, N>& lines)
     {
         std::array<long long, N> testValues {getTestValues<N>(lines)};
         std::array<std::vector<int>, N> numbers {getNumbers<N>(lines)};
