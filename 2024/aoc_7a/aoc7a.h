@@ -107,7 +107,7 @@ namespace aoc7a
                 // first loop is all adding. If that's too large, then false
                 if (firstLoop)
                 {
-                    if (solution > testValue)
+                    if (solution > testValue && std::find(numbers.begin(), numbers.end(), 1) == numbers.end())
                         return false;
                     firstLoop = false;
                 }
