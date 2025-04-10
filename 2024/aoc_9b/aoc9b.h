@@ -5,13 +5,14 @@
 #include <vector>
 #include <string>
 #include <array>
-#include <set>
 
 /*
 process string into vector as in aoc9a
 iterate vector in reverse and collect files (ints) and file sizes
 iterate vector forward and find empty locations
 place files in spaces, with latest tried first. Skip any files that don't have space to fit in earlier
+track the earliest free space, to iterate faster
+iterate in blocks of file size at a time, to iterate faster
 calculate checksum as in aoc9a
 */
 
@@ -72,28 +73,27 @@ namespace aoc9b
         return fileInfo;
     }
 
-    size_t getLargeEnoughFreeSpace(const std::vector<int>& blocks, int fileSize, int fileIndex)
+    size_t getLargeEnoughFreeSpace(const std::vector<int>& blocks, int fileSize, int fileIndex, size_t firstFreeSpace)
     {
-        int freeSize {0};
         int freeSpace {-1};
-        size_t freeIndex {static_cast<size_t>(fileIndex + 1)}; // default value is sentinel value (index of free space must be before file)
 
-        for (size_t i{0}; i < fileIndex; ++i)
+        for (size_t i{firstFreeSpace}; i < fileIndex - (fileSize - 1); )
         {
-            if (blocks[i] != freeSpace)
+            bool allFree {true};
+            for (size_t j{static_cast<size_t>(fileSize)}; j --> 0; )
             {
-                freeSize = 0;
-                continue;
+                if (blocks[i + j] != freeSpace)
+                {
+                    allFree = false;
+                    i += j + 1;
+                    break;
+                }
             }
-            ++freeSize;
-            if (freeSize == fileSize)
-            {
-                freeIndex = i - (freeSize - 1);
-                return freeIndex;
-            }
+            if (allFree)
+                return i;
         }
-        // this should be the default sentinel value
-        return freeIndex;
+        // sentinel value (index of free space must be before file)
+        return fileIndex + 1;
     }
 
     void moveFile (std::vector<int>& blocks, int fileIndex, size_t moveIndex, int fileSize)
@@ -111,14 +111,36 @@ namespace aoc9b
         std::vector<std::array<int, 3>> fileInfo {getFileInformation(blocks)};
 
         std::vector<int> processed {blocks};
+        size_t firstFreeSpace {};
+        for (size_t i{0}; i < blocks.size(); ++i)
+        {
+            if (blocks.at(i) == -1)
+            {
+                firstFreeSpace = i;
+                break;
+            }
+        }
 
         for (std::array<int, 3> file : fileInfo)
         {
             if (file[0] == -1)
                 continue;
-            size_t moveIndex {getLargeEnoughFreeSpace(processed, file[1], file[2])};
+            size_t moveIndex {getLargeEnoughFreeSpace(processed, file[1], file[2], firstFreeSpace)};
             if (moveIndex < file[2])
+            {
                 moveFile(processed, file[2], moveIndex, file[1]);
+                if (firstFreeSpace == moveIndex)
+                {
+                    for (size_t i{moveIndex + file[1]}; i < file[2]; ++i)
+                    {
+                        if (processed.at(i) == -1)
+                        {
+                            firstFreeSpace = i;
+                            break;
+                        }
+                    }
+                }
+            }
         }
 
         return processed;
@@ -127,14 +149,12 @@ namespace aoc9b
     long long getChecksum(const std::vector<int>& filesystem)
     {
         long long sum {0};
-        int position {-1};
 
-        for (int i : filesystem)
+        for (size_t i{0}; i < filesystem.size(); ++i)
         {
-            ++position;
-            if (i == -1)
+            if (filesystem.at(i) == -1)
                 continue;
-            sum += position * i;
+            sum += i * filesystem.at(i);
         }
 
         return sum;
