@@ -13,7 +13,7 @@ int main()
     constexpr std::string_view testInput {R"({"a":{"b":4},"c":-1})"};
     
     aoc12a::SumInt sum {aoc12a::jsonSum(input)};
-    std::cout << sum << '\n';
+    std::cout << "sum of numbers: " << sum << '\n';
     
     std::cout << "Time taken: " << timer.getDuration() << " s\n";
     
