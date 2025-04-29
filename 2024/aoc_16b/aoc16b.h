@@ -1,6 +1,7 @@
 #ifndef AOC16B_H
 #define AOC16B_H
 
+#include "Maze.h"
 #include <string_view>
 #include <array>
 #include "../../shared/Direction.h"
@@ -9,6 +10,9 @@
 #include <cassert>
 #include <algorithm>
 #include <map>
+#include <tuple>
+
+#include <iostream>
 
 /*
 re-use solution to part 1
@@ -16,12 +20,15 @@ now collect the paths of those that reach the end
 with all the final paths, use set to identify unique positions
 i.e. that occur on at least one of the best paths
 
-a best path may be dropped because of one path having one less turn
+a best path may be dropped because one path has one less turn
 so need to account for that
 */
 
 namespace aoc16b
 {
+    constexpr int turn {1'000}; // score for turning
+    constexpr int space {1}; // score for traversing one space
+
     using Move = std::pair<int, int>;
     using Moves = std::vector<Move>;
 
@@ -29,61 +36,16 @@ namespace aoc16b
     using Positions = std::vector<Position>;
     using Paths = std::vector<Positions>;
     using UniquePositions = std::set<Position>;
-    // this collects the score at each position
-    using MapDict = std::map<Position, int>;
 
-    using Scores = std::vector<int>;
+    using Score = int;
+    using Scores = std::vector<Score>;
+    // distances from points after intersection to next intersection
+    using InterKey = std::pair<Position, Move>;
+    using InterVal = std::tuple<Position, Move, Score>;
+    using IntersectionMap = std::map<InterKey, InterVal>;
+    using ShortestDistances = std::map<Position, Score>;
 
-    template <std::size_t N>
-    bool isDeadEnd(const std::array<std::string, N>& map, size_t x, size_t y)
-    {
-        int count {0};
-        for (Move move : Direction::allDirections)
-        {
-            if (map.at(y + move.second).at(x + move.first) == '#')
-                ++count;
-        }
-        return count >= 3;
-    }
-
-    template <std::size_t N>
-    void reviseMap(std::array<std::string, N>& map)
-    {
-        int count {1};
-        while (count > 0)
-        {
-            count = 0;
-            for (size_t y{1}; y < map.size() - 1; ++y)
-            {
-                for (size_t x{1}; x < map.at(y).size() - 1; ++x)
-                {
-                    if (map[y][x] != '.')
-                        continue;
-                    if (isDeadEnd(map, x, y))
-                    {
-                        ++count;
-                        map[y][x] = '#';
-                    }
-                }
-            }
-        }
-    }
-
-    template <std::size_t N>
-    Position getStartingPosition(const std::array<std::string_view, N>& map)
-    {
-        for (size_t y{0}; y < map.size(); ++y)
-        {
-            if (map[y].find('S') == std::string_view::npos)
-                continue;
-            for (size_t x{0}; x < map[y].size(); ++x)
-            {
-                if (map[y][x] == 'S')
-                    return {x, y};
-            }
-        }
-        throw std::invalid_argument("Could not find starting position.\n");
-    }
+    using Indexes = std::vector<size_t>;
 
     Position goInDirection(Position pos, Move move)
     {
@@ -91,77 +53,241 @@ namespace aoc16b
     }
 
     template <std::size_t N>
-    bool hitWall(Position pos, const std::array<std::string, N>& map)
+    bool hitWall(Position pos, const Maze<N>& maze)
     {
-        return map[pos.second][pos.first] == '#';
+        return maze.getPos(pos.first, pos.second) == '#';
     }
 
     template <std::size_t N>
-    bool reachExit(Position pos, const std::array<std::string, N>& map)
+    bool reachExit(Position pos, const Maze<N>& maze)
     {
-        return map[pos.second][pos.first] == 'E';
+        return pos == maze.getEnd();
     }
 
     template <std::size_t N>
-    bool isFree(Position pos, const std::array<std::string, N>& map)
+    bool isFree(Position pos, const Maze<N>& maze)
     {
-        return map[pos.second][pos.first] == '.';
+        return maze.getPos(pos.first, pos.second) == '.';
     }
 
     template <std::size_t N>
-    Moves getOtherMoves(Position pos, Move move, const std::array<std::string, N>& map)
+    Moves getOtherMoves(Position pos, Move move, const Maze<N>& maze)
     {
         Moves next {};
         // check clockwise
         Move clockMove {Direction::turnClockwise(move)};
         Position clockPos {goInDirection(pos, clockMove)};
-        if (isFree(clockPos, map) || reachExit(clockPos, map))
+        if (isFree(clockPos, maze) || reachExit(clockPos, maze) || clockPos == maze.getStart())
             next.push_back(clockMove);
         //check anti-clockwise
         Move antiClockMove {Direction::turnAntiClockwise(move)};
         Position antiClockPos {goInDirection(pos, antiClockMove)};
-        if (isFree(antiClockPos, map) || reachExit(antiClockPos, map))
+        if (isFree(antiClockPos, maze) || reachExit(antiClockPos, maze) || antiClockPos == maze.getStart())
             next.push_back(antiClockMove);
 
         return next;
     }
 
-    void deleteNonValidPaths(Positions& positions, Moves& movements, Scores& scores, Paths& paths, int index)
+    template <std::size_t N>
+    Moves getInitialMoves(Position pos, const Maze<N>& maze)
     {
-        positions.erase(std::next(positions.begin(), index), std::next(positions.begin(), index + 1));
-        movements.erase(std::next(movements.begin(), index), std::next(movements.begin(), index + 1));
-        scores.erase(std::next(scores.begin(), index), std::next(scores.begin(), index + 1));
+        Moves next {};
+        for (Move move : Direction::allDirections)
+        {
+            Position newPos {goInDirection(pos, move)};
+            if (isFree(newPos, maze) || pos == maze.getStart())
+            {
+                next.push_back(move);
+            }
+        }
+        return next;
+    }
+
+    template <std::size_t N>
+    void fillPath(const Positions& path, Maze<N>& maze)
+    {
+        // the first and last positions don't count
+        for (size_t i{1}; i < path.size() - 1; ++i)
+        {
+            maze.fillMaze(path.at(i).first, path.at(i).second);
+        }
+    }
+
+    template <std::size_t N>
+    void fillIfPointlessPath(size_t x, size_t y, Maze<N>& maze)
+    {
+        Paths paths {};
+        Positions current {};
+        Scores scores {};
+        Moves nextMoves {getInitialMoves({x, y}, maze)};
+
+        std::vector<char> pathAtEnd {};
+        for (Move mv : nextMoves)
+        {
+            // whether path at end - '0' for false, '1' for true
+            pathAtEnd.push_back('0');
+            Position po {x, y};
+            current.push_back(po);
+            paths.push_back({po});
+            if (!isFree(goInDirection(po, {-mv.first, -mv.second}), maze) && (mv == Direction::east || mv == Direction::north))
+                scores.push_back(turn);
+            else
+                scores.push_back(0);
+        }
+
+        int ended {0};
+        while (ended < pathAtEnd.size())
+        {
+            for (size_t i{0}; i < current.size(); ++i)
+            {
+                if (pathAtEnd.at(i) == '0')
+                {
+                    Position newPos {goInDirection(current.at(i), nextMoves.at(i))};
+
+                    int walls {maze.countWalls(newPos.first, newPos.second)};
+                    current[i] = newPos;
+                    scores[i] += space;
+                    Position nextNextPos {goInDirection(newPos, nextMoves.at(i))};
+                    if (std::find(paths.at(i).begin(), paths.at(i).end(), newPos) != paths.at(i).end() || walls < 2 || reachExit(newPos, maze) || newPos == maze.getStart())
+                    {
+                        pathAtEnd[i] = '1';
+                        ++ended;
+                        paths[i].push_back(newPos);
+                        if (!isFree(nextNextPos, maze))
+                            scores[i] += turn;
+                    }
+                    else
+                    {
+                        paths[i].push_back(newPos);
+                        if (!isFree(nextNextPos, maze) && !reachExit(nextNextPos, maze) && !(nextNextPos == maze.getStart()))
+                        {
+                            Moves newMove {getOtherMoves(newPos, nextMoves.at(i), maze)};
+                            assert(newMove.size() == 1 && "There isn't only one new move, as was expected.\n");
+                            nextMoves[i] = newMove.at(0);
+                            scores[i] += turn;
+                        }
+                    }
+                }
+            }
+        }
+
+        for (size_t j{0}; j < current.size(); ++j)
+        {
+            for (size_t k{j + 1}; k < current.size(); ++k)
+            {
+                if (current.at(j) == current.at(k))
+                {
+                    if (scores.at(j) < scores.at(k))
+                    {
+                        fillPath(paths.at(k), maze);
+                    }
+                    else if (scores.at(j) > scores.at(k))
+                    {
+                        fillPath(paths.at(j), maze);
+                    }
+
+                    // handle situation where we now have a dead end
+                    if (maze.countWalls(current.at(j).first, current.at(j).second) == 3)
+                    {
+                        // we'll use that there should be 3 paths
+                        assert(current.size() == 3 && "Expected there to be 3 paths.\n");
+                        size_t other {};
+                        for (size_t l{0}; l < current.size(); ++l)
+                        {
+                            if (l != j && l != k)
+                            {
+                                other = l;
+                                break;
+                            }
+                        }
+                        // don't fill the last position
+                        for (size_t m{0}; m < paths.at(other).size() - 1; ++m)
+                        {
+                            maze.fillMaze(paths.at(other).at(m).first, paths.at(other).at(m).second);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    template <std::size_t N>
+    void removePointlessPaths(Maze<N>& maze)
+    {
+        size_t y {0};
+        for (std::string& row : maze.getMaze())
+        {
+            for (size_t x{1}; x < row.size() - 1; ++x)
+            {
+                // interested in 3-way crossroads
+                if (row[x] == '.' && maze.countWalls(x, y) == 1)
+                {
+                    fillIfPointlessPath<N>(x, y, maze);
+                }
+            }
+            ++y;
+        }
+    }
+
+    template <std::size_t N>
+    InterVal getValues(Position pos, Move dir, const Maze<N>& maze)
+    {
+        Score score {0};
+        do
+        {
+            if (isFree(goInDirection(pos, dir), maze) || reachExit(goInDirection(pos, dir), maze))
+            {
+                pos = goInDirection(pos, dir);
+            }
+            else
+            {
+                Moves nextMv {getOtherMoves(pos, dir, maze)};
+                assert(nextMv.size() == 1 && "Expected only one option for next move.\n");
+                dir = nextMv.at(0);
+                pos = goInDirection(pos, dir);
+                score += turn;
+            }
+            score += 1;
+        } while (maze.countWalls(pos.first, pos.second) == 2);
+        return {pos, dir, score};
+    }
+
+    template <std::size_t N>
+    IntersectionMap getIntersectionDistances(const Maze<N>& maze)
+    {
+        IntersectionMap intersections {};
+        Positions positions {maze.getStart()};
+
+        while (positions.size() > 0)
+        {
+            Positions newPaths {};
+            for (const Position& pos : positions)
+            {
+                for (Move dir : Direction::allDirections)
+                {
+                    if (intersections.find({pos, dir}) == intersections.end() && isFree(goInDirection(pos, dir), maze))
+                    {
+                        InterVal values {getValues(pos, dir, maze)};
+                        intersections[{pos, dir}] = values;
+                        InterKey key = std::make_pair(std::get<0>(values), std::make_pair(-std::get<1>(values).first, -std::get<1>(values).second));
+                        intersections[key] = {pos, dir, std::get<2>(values)};
+
+                        newPaths.push_back(std::get<0>(values));
+                    }
+                }
+            }
+
+            positions = newPaths;
+        }
+
+        return intersections;
+    }
+
+    void deleteDefunctPaths(Paths& paths, Moves& moves, Scores& scores, int index)
+    {
         paths.erase(std::next(paths.begin(), index), std::next(paths.begin(), index + 1));
-    }
-
-    bool isValidPosition(Position pos, int score, const MapDict& dict)
-    {
-        // need to account that a given position may be 1000 lower
-        // due to one path having one fewer turn
-        if (dict.at(pos) == score - 1000)
-            return true;
-        else
-            return dict.at(pos) >= score;
-    }
-
-    Paths getBestPaths(const Paths& paths, const Scores& scores)
-    {
-        assert((paths.size() == scores.size()) && "Final number of paths and scores is inconsistent.\n");
-        int lowestScore {0};
-        for (int score : scores)
-        {
-            if (lowestScore == 0)
-                lowestScore = score;
-            else if (score < lowestScore)
-                lowestScore = score;
-        }
-        Paths best {};
-        for (size_t i{0}; i < paths.size(); ++i)
-        {
-            if (scores.at(i) == lowestScore)
-                best.push_back(paths.at(i));
-        }
-        return best;
+        moves.erase(std::next(moves.begin(), index), std::next(moves.begin(), index + 1));
+        scores.erase(std::next(scores.begin(), index), std::next(scores.begin(), index + 1));
     }
 
     size_t getTilesOnBestPaths(const Paths& paths)
@@ -180,144 +306,130 @@ namespace aoc16b
     template <std::size_t N>
     size_t parseAndGetBestTiles(const std::array<std::string_view, N>& lines)
     {
-        int score {0};
-        constexpr Move move {Direction::east}; // set in puzzle
-        Position start {getStartingPosition<N>(lines)};
+        Maze maze {Maze<N>(lines)};
 
-        // set up starting position
-        Positions positions {};
-        positions.push_back(start);
-        Moves movements {};
-        movements.push_back(move);
-        Scores scores {};
-        scores.push_back(0);
-        MapDict mapPos {};
-        mapPos[start] = 0;
+        // remove dead ends, to make finding valid paths faster
+        maze.removeDeadEnds();
+        
+        // go through maze and fill in pointless paths
+        removePointlessPaths<N>(maze);
 
-        // collect paths through maze
+        IntersectionMap intersections {getIntersectionDistances<N>(maze)};
+
         Paths paths {};
-        paths.push_back(positions);
+        paths.push_back({maze.getStart()});
+        // puzzle starts facing east
+        Moves moves {Direction::east};
+        Scores scores {0};
+
         Paths finalPaths {};
+        Score minScore {};
+        ShortestDistances shortest {};
 
-        Scores finalScores {};
-        // can improve efficiency by tracking the lowest final score
-        // and dropping paths that are higher than this
-        int lowestFinalScore {};
-        bool noPathsLeft {false};
-
-        // remove dead ends from map, to make finding valid paths faster
-        std::array<std::string, N> newMap {};
-        for (size_t i{0}; i < lines.size(); ++i)
-            newMap[i] = std::string(lines.at(i));
-        reviseMap<N>(newMap);
-
-        // reached after lots of testing of the puzzle
-        while (!noPathsLeft)
+        while (paths.size() > 0)
         {
-            std::vector<size_t> nonValidPaths {};
-            assert((positions.size() == movements.size() && movements.size() == scores.size() && scores.size() == paths.size()) && "Info on the number of paths is inconsistent (position, move, score, paths).\n");
-            Positions positionsToAdd {};
+            Paths pathsToAdd {};
             Moves movesToAdd {};
             Scores scoresToAdd {};
-            Paths pathsToAdd {};
+            Indexes pathsToEnd {};
 
-            int way {0};
-            for (size_t i{0}; i < positions.size(); ++i)
+            for (size_t i{0}; i < paths.size(); ++i)
             {
-                Position currentPos {positions[i]};
-                Move currentMove {movements[i]};
-                int currentScore {scores[i]};
-                Positions currentPath {paths[i]};
-                // first traverse the current direction
-                Position forward {goInDirection(positions[i], movements[i])};
-                // if path has higher score than current lowest
-                // then there's no point continuing. End early for more speed
-                // also short circuit long, pointless paths with max score
-                if (lowestFinalScore > 0 && scores[i] >= lowestFinalScore)
-                {
-                    nonValidPaths.push_back(i);
-                    continue;
-                }
-                // check position wasn't reached already with a lower score
-                // i.e. avoid loops, or paths that are longer than needed
-                if (mapPos.find(forward) != mapPos.end() && !isValidPosition(forward, scores[i] + 1, mapPos))
-                    nonValidPaths.push_back(i);
-                // otherwise path is valid
-                else if (isFree(forward, newMap))
-                {
-                    positions[i] = forward;
-                    ++scores[i];
-                    mapPos[forward] = scores[i];
-                    paths[i].push_back(forward);
-                }
-                // if new position is exit, then path is done
-                else if (reachExit(forward, newMap))
-                {
-                    finalScores.push_back(scores[i] + 1);
-                    if (lowestFinalScore == 0 || scores[i] + 1 < lowestFinalScore)
-                        lowestFinalScore = scores[i] + 1;
-                    nonValidPaths.push_back(i);
-                    mapPos[forward] = scores[i] + 1;
-                    paths[i].push_back(forward);
-                    finalPaths.push_back(paths[i]);
-                }
-                // if hit wall, then current path is done
-                else if (hitWall(forward, newMap))
-                    nonValidPaths.push_back(i);
+                Positions currPositions {paths.at(i)};
+                Move currMove {moves.at(i)};
+                Score currScore {scores.at(i)};
 
-                // next look at alternate paths, i.e. (anti-)clockwise
-                Moves alternateMoves {getOtherMoves(currentPos, currentMove, newMap)};
-                for (Move otherMove : alternateMoves)
+                for (Move dir : Direction::allDirections)
                 {
-                    Position nextSpace {goInDirection(currentPos, otherMove)};
-                    // check position was not reached before with lower score
-                    if (mapPos.find(nextSpace) != mapPos.end() && !isValidPosition(nextSpace, currentScore + 1001, mapPos))
-                        continue;
-                    // if path valid, then add as a new path
-                    else if (isFree(nextSpace, newMap))
+                    InterKey key = std::make_pair(currPositions.back(), dir);
+
+                    if (intersections.find(key) != intersections.end() && std::find(paths.at(i).begin(), paths.at(i).end(), std::get<0>(intersections.at(key))) == paths.at(i).end())
                     {
-                        // need to add these to temporary objects and add later
-                        // as otherwise we could add extra loops in the for loop
-                        positionsToAdd.push_back(nextSpace);
-                        movesToAdd.push_back(otherMove);
-                        // add 1,000 for turn and 1 for move
-                        scoresToAdd.push_back(currentScore + 1001);
-                        mapPos[nextSpace] = currentScore + 1001;
-                        Positions tempPath {currentPath};
-                        tempPath.push_back(nextSpace);
-                        pathsToAdd.push_back(tempPath);
-                    }
-                    // if at exit, add 1,000 for turn and 1 for move
-                    else if (reachExit(nextSpace, newMap))
-                    {
-                        finalScores.push_back(currentScore + 1001);
-                        if (lowestFinalScore == 0 || currentScore + 1001 < lowestFinalScore)
-                            lowestFinalScore = currentScore + 1001;
-                        mapPos[nextSpace] = currentScore + 1001;
-                        Positions tempPath {currentPath};
-                        tempPath.push_back(nextSpace);
-                        finalPaths.push_back(tempPath);
+                        if (dir == currMove)
+                        {
+                            paths[i].push_back(std::get<0>(intersections.at(key)));
+                            moves[i] = std::get<1>(intersections.at(key));
+                            scores[i] = std::get<2>(intersections.at(key));
+
+                            if (shortest.find(paths.at(i).back()) == shortest.end() || scores.at(i) < shortest.at(paths.at(i).back()))
+                            {
+                                shortest[paths.at(i).back()] = scores.at(i);
+                            }
+
+                            if (std::get<0>(intersections.at(key)) == maze.getEnd())
+                            {
+                                pathsToEnd.push_back(i);
+                                if (minScore == 0 || scores.at(i) < minScore)
+                                {
+                                    minScore = scores.at(i);
+                                    finalPaths = {paths.at(i)};
+                                }
+                                else if (scores.at(i) == minScore)
+                                {
+                                    finalPaths.push_back(paths.at(i));
+                                }
+                            }
+                            else if ((minScore > 0 && scores.at(i) >= minScore) || scores.at(i) > shortest.at(paths.at(i).back()))
+                            {
+                                pathsToEnd.push_back(i);
+                            }
+                        }
+                        else
+                        {
+                            Positions newPos {currPositions};
+                            newPos.push_back(std::get<0>(intersections.at(key)));
+
+                            if (std::get<0>(intersections.at(key)) == maze.getEnd())
+                            {
+                                Score finScore {currScore + std::get<2>(intersections.at(key)) + turn};
+
+                                if (minScore == 0 || finScore < minScore)
+                                {
+                                    minScore = finScore;
+                                    finalPaths = {newPos};
+                                }
+                                else if (finScore == minScore)
+                                {
+                                    finalPaths.push_back(newPos);
+                                }
+                            }
+                            else
+                            {
+                                Score newScore {std::get<2>(intersections.at(key)) + turn};
+
+                                if (shortest.find(paths.at(i).back()) == shortest.end() || newScore < shortest.at(paths.at(i).back()))
+                                {
+                                    shortest[paths.at(i).back()] = newScore;
+                                }
+
+                                if (minScore == 0 || newScore <= minScore || newScore <= shortest.at(paths.at(i).back()))
+                                {
+                                    pathsToAdd.push_back(newPos);
+                                    movesToAdd.push_back(std::get<1>(intersections.at(key)));
+                                    scoresToAdd.push_back(newScore);
+                                }
+                            }
+                        }
                     }
                 }
             }
 
-            for (size_t j{0}; j < positionsToAdd.size(); ++j)
+            // add new paths/moves/scores
+            for (size_t nw{0}; nw < pathsToAdd.size(); ++nw)
             {
-                positions.push_back(positionsToAdd[j]);
-                movements.push_back(movesToAdd[j]);
-                scores.push_back(scoresToAdd[j]);
-                paths.push_back(pathsToAdd[j]);
+                paths.push_back(pathsToAdd.at(nw));
+                moves.push_back(movesToAdd.at(nw));
+                scores.push_back(scoresToAdd.at(nw));
             }
-            // clean up by removing non-valid paths
-            // go in reverse order to delete the right paths
-            for (int j{static_cast<int>(nonValidPaths.size() - 1)}; j >= 0; --j)
-                deleteNonValidPaths(positions, movements, scores, paths, nonValidPaths[j]);
-            if (positions.size() == 0)
-                noPathsLeft = true;
+            // remove defunct paths/moves/scores
+            for (int ol{static_cast<int>(pathsToEnd.size() - 1)}; ol >= 0; --ol)
+            {
+                deleteDefunctPaths(paths, moves, scores, pathsToEnd[ol]);
+            }
+            std::cout << paths.size() << '\n';
         }
 
-        Paths bestPaths {getBestPaths(finalPaths, finalScores)};
-        return getTilesOnBestPaths(bestPaths);
+        return getTilesOnBestPaths(finalPaths);
     }
 }
 
