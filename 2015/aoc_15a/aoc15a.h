@@ -46,7 +46,6 @@ namespace aoc15a
     // min and max number of spoons for each ingredient
     using SpoonLimit = std::pair<Spoon, Spoon>;
     using SpoonLimits = std::vector<SpoonLimit>;
-    using Limit = double;
     using PropertyTotals = std::vector<Property>;
 
     template <std::size_t N>
