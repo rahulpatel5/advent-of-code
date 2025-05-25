@@ -121,7 +121,7 @@ namespace aoc18a
     }
 
     template <std::size_t N>
-    LightInt countLights(const Map<N> map)
+    LightInt countLights(const Map<N>& map)
     {
         return std::accumulate(map.begin(), map.end(), 0, [](int sum, const std::string& s) {
             return sum + std::count(s.begin(), s.end(), ON_LIGHT);
