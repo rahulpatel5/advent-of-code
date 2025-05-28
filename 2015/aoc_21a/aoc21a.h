@@ -117,12 +117,12 @@ namespace aoc21a
         while (bossHealth > 0 && playerHealth > 0)
         {
             // attack the boss!
-            bossHealth -= player.at(1) - boss.at(2);
+            bossHealth -= (player.at(1) - boss.at(2) < 1) ? 1 : player.at(1) - boss.at(2);
             if (bossHealth <= 0)
                 return true;
 
             // boss attack!
-            playerHealth -= boss.at(1) - player.at(2);
+            playerHealth -= (boss.at(1) - player.at(2) < 1) ? 1 : boss.at(1) - player.at(2);
             if (playerHealth <= 0)
                 return false;
         }
