@@ -7,6 +7,7 @@
 #include <vector>
 #include <map>
 #include <algorithm>
+#include <ranges>
 
 /*
 re-use solution to part 1
@@ -71,7 +72,7 @@ namespace aoc13b
         return personIndex;
     }
 
-    HapInt maxHappiness(int n, const HappyMap& happyMap)
+    HapInt maxHappiness(int n, const HappyMap& happyMap, int maxHappy)
     {
         HapInt max {};
 
@@ -98,6 +99,9 @@ namespace aoc13b
                 else
                     pair = {order.at(n), order.at(n + 1)};
                 happy += happyMap.at(pair);
+
+                if ((order.size() - 1 - n) * maxHappy + happy <= max)
+                    break;
             }
             if (happy > max)
                 max = happy;
@@ -113,6 +117,9 @@ namespace aoc13b
         HappyMap happyMap {};
         int numberPeople {processInput<N>(lines, happyMap)};
 
+        auto values {std::views::values(happyMap)};
+        int maxHappy {std::ranges::max(values)};
+
         // add extra person (me, apparently)
         for (int i{0}; i < numberPeople; ++i)
         {
@@ -121,7 +128,7 @@ namespace aoc13b
         }
         ++numberPeople;
 
-        return maxHappiness(numberPeople, happyMap);
+        return maxHappiness(numberPeople, happyMap, maxHappy);
     }
 }
 
