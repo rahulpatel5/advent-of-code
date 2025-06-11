@@ -11,6 +11,9 @@
 /*
 repeat part 1 solution, but add player turn health reduction
 
+change to prioritise certain spells in certain conditions
+need to be sure when doing this, as will skip options
+
 WHILE player or boss haven't run out of health
     IF player doesn't have enough mana to cast spell
         THEN player loses
@@ -40,16 +43,15 @@ WHILE player or boss haven't run out of health
         TRY a different branch of moves
     ELSE
         REDUCE player health
+        * CHOOSE next spell based on conditions
+            prioritise having shield, unless almost won
+            then prioritise using poison, as most cost effective
+            then choose default path
         MOVE to next round
 
 RETURN the minimum mana needed to win
 
-considering whether to use classes to handle the boss and player:
-    I decided against using classes
-    the main issue is because of using a recursive function
-    since I was tracking the boss and player, we need the state
-    this means creating a copy of the class object for each combo
-    I believe this would be memory intensive vs storing in a vector
+* shows a change to the part 1 solution
 */
 
 namespace aoc22b
@@ -58,18 +60,25 @@ namespace aoc22b
     template <std::size_t N>
     using Lines = std::array<std::string_view, N>;
 
-    using Stat = int;
-    using Stats = std::vector <Stat>;
-    using Health = Stat;
-    using Damage = Stat;
-    using Armour = Stat;
-    using Boss = std::pair<Health, Armour>;
-    using Player = std::pair<Health, Mana>;
+    using Attr = int;
+    using Stats = std::vector<Attr>;
+    using Health = Attr;
+    using Damage = Attr;
+    using Armour = Attr;
+
+    struct Boss {
+        Health health;
+        Damage attack;
+    };
+    struct Player {
+        Health health;
+        Mana mana;
+    };
 
     using Spell = int;
     using SpellInfo = std::pair<Mana, Damage>;
     using SpellLength = int;
-    using SpellCosts = std::vector<Mana>;
+    using SpellCosts = std::array<Mana, 5>;
 
     constexpr Health PLAYER_HEALTH {50};
     constexpr Mana PLAYER_MANA {500};
@@ -113,9 +122,9 @@ namespace aoc22b
             if (spellTurns.at(s) > 0)
             {
                 if (s == 1)
-                    boss.first -= POISON_DAMAGE_PER_TURN;
+                    boss.health -= POISON_DAMAGE_PER_TURN;
                 else if (s == 2)
-                    player.second += RECHARGE_REGAIN_PER_TURN;
+                    player.mana += RECHARGE_REGAIN_PER_TURN;
 
                 --spellTurns[s];
             }
@@ -126,66 +135,68 @@ namespace aoc22b
     {
         for (size_t i{spellIndex}; i < MAX_SPELL_CHOICES; ++i)
         {
-            if (player.first <= 1 || boss.first <= 0 || (minMana != 0 && manaSpent >= minMana))
+            if (player.health <= 1 || boss.health <= 0 || (minMana != 0 && manaSpent >= minMana))
                 break;
             
-            if ((i > 1 && spellTurns.at(i - 2) > 1) || (player.second + ((spellTurns.at(2) > 0) ? RECHARGE_REGAIN_PER_TURN : 0) < spellCosts.at(i)))
+            if ((i > 1 && spellTurns.at(i - 2) > 1) || (player.mana + ((spellTurns.at(2) > 0) ? RECHARGE_REGAIN_PER_TURN : 0) < spellCosts.at(i)))
                 continue;
 
             // only continue if there's any point
-            if (player.first > 1 && boss.first > 0 && (minMana == 0 || manaSpent < minMana) && player.second > 0)
+            if (player.health > 1 && boss.health > 0 && (minMana == 0 || manaSpent < minMana) && player.mana > 0)
                 recursiveMinimumMana(player, boss, spellCosts, i + 1, spellTurns, manaSpent, minMana);
             
             // player turn
             // new health reduction effect
-            player.first -= 1;
-            assert(player.first > 0 && "Expected player to still be alive.\n");
+            player.health -= 1;
+            assert(player.health > 0 && "Expected player to still be alive.\n");
             applySpellEffectsAndReduceTurn(player, boss, spellTurns);
             
-            if (boss.first <= 0 && player.first > 0 && (minMana == 0 || manaSpent < minMana))
+            if (boss.health <= 0 && player.health > 0 && (minMana == 0 || manaSpent < minMana))
             {
                 minMana = manaSpent;
             }
             
             manaSpent += spellCosts.at(i);
-            player.second -= spellCosts.at(i);
-            switch (i)
+            player.mana -= spellCosts.at(i);
+            if (i == 0)
+                boss.health -= MAGIC_MISSILE.second;
+            else if (i == 1)
             {
-            case 0:
-                boss.first -= MAGIC_MISSILE.second;
-                break;
-            case 1:
-                boss.first -= DRAIN.second;
-                player.first += DRAIN.second;
-                break;
-            case 2:
-                spellTurns[0] = SHIELD_MAX_TURNS;
-                break;
-            case 3:
-                spellTurns[1] = POISON_MAX_TURNS;
-                break;
-            case 4:
-                spellTurns[2] = RECHARGE_MAX_TURNS;
-                break;
-            default:
-                throw std::out_of_range("Got unexpected spell.\n");
+                boss.health -= DRAIN.second;
+                player.health += DRAIN.second;
             }
+            else if (i == 2)
+                spellTurns[0] = SHIELD_MAX_TURNS;
+            else if (i == 3)
+                spellTurns[1] = POISON_MAX_TURNS;
+            else if (i == 4)
+                spellTurns[2] = RECHARGE_MAX_TURNS;
+            else
+                throw std::out_of_range("Got unexpected spell.\n");
             
             // boss turn
             bool isShieldActive {spellTurns.at(0) > 0};
             applySpellEffectsAndReduceTurn(player, boss, spellTurns);
 
-            if (boss.first <= 0 && player.first > 0 && (minMana == 0 || manaSpent < minMana) && player.first > 0 && player.second >= 0)
+            if (boss.health <= 0 && player.health > 0 && (minMana == 0 || manaSpent < minMana) && player.mana >= 0)
             {
                 minMana = manaSpent;
             }
             
-            Damage bossAttack {boss.second - (isShieldActive ? SHIELD_EFFECT : 0)};
-            player.first -= (bossAttack < 1) ? 1 : bossAttack;
+            Damage bossAttack {boss.attack - (isShieldActive ? SHIELD_EFFECT : 0)};
+            player.health -= (bossAttack < 1) ? 1 : bossAttack;
 
-            // start next round with any combination
-            if (player.first > 1 && boss.first > 0 && (minMana == 0 || manaSpent < minMana))
-                recursiveMinimumMana(player, boss, spellCosts, 0, spellTurns, manaSpent, minMana);
+            if (player.health > 1 && boss.health > 0 && (minMana == 0 || manaSpent < minMana))
+            {
+                // avoid damage to stay alive, unless almost won
+                if (spellTurns.at(0) <= 1 && (boss.health > MAGIC_MISSILE.second * 2 + POISON_DAMAGE_PER_TURN * ((spellTurns.at(1) < 3) ? spellTurns.at(1) : 2)) && player.health > 3)
+                    recursiveMinimumMana(player, boss, spellCosts, 2, spellTurns, manaSpent, minMana);
+                // poison is most cost effective spell
+                else if (spellTurns.at(1) <= 1 && boss.health > POISON_DAMAGE_PER_TURN * POISON_MAX_TURNS)
+                    recursiveMinimumMana(player, boss, spellCosts, 3, spellTurns, manaSpent, minMana);
+                else
+                    recursiveMinimumMana(player, boss, spellCosts, 0, spellTurns, manaSpent, minMana);
+            }
         }
         return minMana;
     }
