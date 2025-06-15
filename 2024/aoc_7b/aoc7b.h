@@ -1,33 +1,57 @@
 #ifndef AOC7B_H
 #define AOC7B_H
 
-#include "../aoc_7a/permutation.h"
-#include "permutation_7b.h"
 #include <string_view>
 #include <array>
 #include <vector>
 #include <string>
+#include <algorithm>
+#include <future>
+#include <stdexcept>
 
 /*
-re-use aoc7a solution to count how many pass using * and +
-iterate through remaining unsolved solutions
-add permutations including one || operator (note: might be more than one operator?)
-use '(' instead, 1) to keep operators as char and 2) as permutations rely on having ASCII codes in ascending order ('(' is before + and *)
-iterate through unsolved equations with new permutations
-count how many pass, in addition to previous
+FOR each test value
+    TEST each permutation of + and * and || for those numbers
+        IF the calculation equals the test value
+            THEN mark this test value as a success
+            ADD the test value to the sum of successes
+            MOVE to the next test value
+        ELSE
+            TRY the next permutation
+
+RETURN sum of successes
+
+use parallelisation to speed up code
 */
 
 namespace aoc7b
 {
+    static double tim {0};
+    using Result = long long;
+
     template <std::size_t N>
-    std::array<long long, N> getTestValues(std::array<std::string_view, N> lines)
+    using Lines = std::array<std::string_view, N>;
+
+    using TestValue = long long;
+    template <std::size_t N>
+    using TestValues = std::array<TestValue, N>;
+
+    using Number = int;
+    using Numbers = std::vector<Number>;
+    template <std::size_t N>
+    using AllNumbers = std::array<Numbers, N>;
+
+    using Permutation = std::vector<char>;
+
+    template <std::size_t N>
+    TestValues<N> getTestValues(const Lines<N>& lines)
     {
-        std::array<long long, N> testVals {};
+        TestValues<N> testVals {};
 
         for (size_t i{0}; i < lines.size(); ++i)
         {
             size_t colon {lines.at(i).find(':')};
-            long long test {std::stoll(std::string(lines.at(i).substr(0, colon)))};
+            TestValue test {std::stoll(std::string(lines.at(i).substr(0, colon)))};
             testVals[i] = test;
         }
 
@@ -35,13 +59,13 @@ namespace aoc7b
     }
 
     template <std::size_t N>
-    std::array<std::vector<int>, N> getNumbers(std::array<std::string_view, N> lines)
+    AllNumbers<N> getNumbers(const Lines<N>& lines)
     {
-        std::array<std::vector<int>, N> outerNumbers {};
+        AllNumbers<N> outerNumbers {};
 
         for (size_t i{0}; i < lines.size(); ++i)
         {
-            std::vector<int> innerNumbers {};
+            Numbers innerNumbers {};
             
             size_t start {lines.at(i).find(':') + 2};
             size_t end {0};
@@ -49,7 +73,7 @@ namespace aoc7b
             while (end != std::string_view::npos)
             {
                 end = lines.at(i).find(' ', start);
-                int num {std::stoi(std::string(lines.at(i).substr(start, end - start)))};
+                Number num {std::stoi(std::string(lines.at(i).substr(start, end - start)))};
                 innerNumbers.push_back(num);
                 start = end + 1;
             }
@@ -59,92 +83,59 @@ namespace aoc7b
         return outerNumbers;
     }
 
-    bool performAddMultCalculation(long long testValue, std::vector<int> numbers, std::vector<std::vector<char>> permutations)
+    long long findDigits(long long num)
     {
-        for (std::vector<char> permutation : permutations)
-        {
-            long long solution {};
-            for (size_t i{0}; i < permutation.size(); ++i)
-            {
-                if (i == 0)
-                    solution = numbers.at(i);
-                if (permutation.at(i) == '+')
-                    solution += numbers.at(i + 1);
-                else if (permutation.at(i) == '*')
-                    solution *= numbers.at(i + 1);
-            }
-            if (solution == testValue)
-                return true;
-        }
-
-        return false;
-    }
-
-    template <std::size_t N>
-    std::vector<size_t> findAddMultTestIndexPasses(std::array<long long, N> testValues, std::array<std::vector<int>, N> numbers)
-    {
-        std::vector<size_t> successes {};
-
-        for (size_t i{0}; i < testValues.size(); ++i)
-        {
-            std::vector<std::vector<char>> permutations {permutation::generate(numbers.at(i))};
-
-            if (performAddMultCalculation(testValues.at(i), numbers.at(i), permutations))
-                successes.push_back(i);
-        }
-
-        return successes;
-    }
-
-    template <std::size_t N>
-    std::vector<size_t> getOnlyUnsolvedIndices(std::array<long long, N> testValues, std::vector<size_t> addMultIndices)
-    {
-        std::vector<size_t> unsolved {};
-
-        for (size_t i{0}; i < testValues.size(); ++i)
-        {
-            bool isSuccess {false};
-            for (size_t solvedIndex : addMultIndices)
-            {
-                if (i == solvedIndex)
-                {
-                    isSuccess = true;
-                    break;
-                }
-            }
-            if (!isSuccess)
-                unsolved.push_back(i);
-        }
-
-        return unsolved;
+        if (num < 10)
+            return 10;
+        else if (num < 100)
+            return 100;
+        else if (num < 1'000)
+            return 1'000;
+        else
+            throw std::out_of_range("Number larger than expected.\n");
     }
 
     long long concatenateNumbers(long long num1, long long num2)
     {
-        std::string concatenatedString;
-        concatenatedString.append(std::to_string(num1));
-        concatenatedString.append(std::to_string(num2));
-        return std::stoll(concatenatedString);
+        long long tensMultiplier {findDigits(num2)};
+        return (tensMultiplier * num1 + num2);
     }
 
-    bool performConcatCalculation(long long testValue, std::vector<int> numbers, std::vector<std::vector<char>> permutations)
+    bool performConcatCalculation(TestValue testValue, const Numbers& numbers, const Permutation& permutation)
     {
-        for (std::vector<char> permutation : permutations)
+        long long solution {};
+        for (size_t i{0}; i < permutation.size(); ++i)
         {
-            long long solution {};
-            for (size_t i{0}; i < permutation.size(); ++i)
+            if (i == 0)
+                solution = numbers.at(i);
+            
+            if (permutation.at(i) == '(')
             {
-                if (i == 0)
-                    solution = numbers.at(i);
-                
-                if (permutation.at(i) == '(')
-                    solution = concatenateNumbers(solution, numbers.at(i + 1));
-                else if (permutation.at(i) == '+')
-                    solution += numbers.at(i + 1);
-                else if (permutation.at(i) == '*')
-                    solution *= numbers.at(i + 1);
+                solution = concatenateNumbers(solution, numbers.at(i + 1));
             }
-            if (solution == testValue)
+            else if (permutation.at(i) == '+')
+                solution += numbers.at(i + 1);
+            else if (permutation.at(i) == '*')
+                solution *= numbers.at(i + 1);
+            
+            if (solution > testValue)
+                return false;
+        }
+
+        return (solution == testValue);
+    }
+
+    bool recursivePermutation(TestValue testValue, const Numbers& numbers, Permutation& perm, size_t index)
+    {
+        if (index == perm.size())
+            return performConcatCalculation(testValue, numbers, perm);
+        
+        // this order of operations is the fastest, from testing
+        for (char oper : {'*', '+', '('})
+        {
+            perm[index] = oper;
+
+            if(recursivePermutation(testValue, numbers, perm, index + 1))
                 return true;
         }
 
@@ -152,48 +143,35 @@ namespace aoc7b
     }
 
     template <std::size_t N>
-    std::vector<size_t> findConcatTestIndexPasses(std::array<long long, N> testValues, std::array<std::vector<int>, N> numbers, std::vector<size_t> addMultIndices)
+    Result totalSuccesses(const TestValues<N>& testValues, const AllNumbers<N>& numbers)
     {
-        std::vector<size_t> successes {};
-        std::vector<size_t> unsolvedOnlyIndices {getOnlyUnsolvedIndices(testValues, addMultIndices)};
+        std::vector<std::future<Result>> futures {};
+        Result result {0};
 
-        for (size_t unsolvedIndex : unsolvedOnlyIndices)
+        for (size_t i{0}; i < testValues.size(); ++i)
         {
-            std::vector<std::vector<char>> permutations {permutation_7b::generateWithConcat(numbers.at(unsolvedIndex))};
-
-            if (performConcatCalculation(testValues.at(unsolvedIndex), numbers.at(unsolvedIndex), permutations))
-                successes.push_back(unsolvedIndex);
+            futures.push_back(std::async(std::launch::async, [=]() -> Result {
+                Permutation perm (numbers.at(i).size() - 1, '+');
+                if (recursivePermutation(testValues.at(i), numbers.at(i), perm, 0)) {
+                    return testValues.at(i);
+                }
+                return 0ll;
+            }));
         }
 
-        return successes;
+        for (auto& f : futures)
+            result += f.get();
+        
+        return result;
     }
 
     template <std::size_t N>
-    long long sumSuccesses(std::vector<size_t> addMultSuccessIndices, std::vector<size_t> concatSuccessIndices, std::array<long long, N> testValues)
+    Result parseAndCountTests(const Lines<N>& lines)
     {
-        long long sum {0};
-        for (size_t addMultIndex : addMultSuccessIndices)
-        {
-            sum += testValues.at(addMultIndex);
-        }
-        for (size_t concatIndex : concatSuccessIndices)
-        {
-            sum += testValues.at(concatIndex);
-        }
-        return sum;
-    }
+        TestValues testValues {getTestValues<N>(lines)};
+        AllNumbers numbers {getNumbers<N>(lines)};
 
-    template <std::size_t N>
-    long long parseAndCountTests(std::array<std::string_view, N> lines)
-    {
-        std::array<long long, N> testValues {getTestValues<N>(lines)};
-        std::array<std::vector<int>, N> numbers {getNumbers<N>(lines)};
-
-        std::vector<size_t> addMultSuccessIndices {findAddMultTestIndexPasses<N>(testValues, numbers)};
-
-        std::vector<size_t> concatSuccessIndices {findConcatTestIndexPasses<N>(testValues, numbers, addMultSuccessIndices)};
-
-        return sumSuccesses<N>(addMultSuccessIndices, concatSuccessIndices, testValues);
+        return totalSuccesses<N>(testValues, numbers);
     }
 }
 
