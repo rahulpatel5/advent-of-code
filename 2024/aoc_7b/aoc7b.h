@@ -138,7 +138,6 @@ namespace aoc7b
             if(recursivePermutation(testValue, numbers, perm, index + 1))
                 return true;
         }
-
         return false;
     }
 
