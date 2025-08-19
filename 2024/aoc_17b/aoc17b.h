@@ -7,85 +7,55 @@
 #include <map>
 #include <cmath>
 #include <stdexcept>
+#include <cassert>
+#include <tuple>
+// #include <algorithm>
+
+#include <iostream>
 
 /*
-re-use part 1 solution
-iterate increasing values of register A to generate output
-compare generated output to original program
-return (i.e. lowest) value for register A where output matches program
-consider alternative approach if this takes too long
+work backwards from the end state
 
-the program (test and puzzle) halting depend on the loop condition
-this depends on the value of register A
-looking at the opcodes, register A is only directly affected by 3
-if the value of this is <4, there will be a pattern to the output size
-we can use this to limit the number of iterations where the output size will be an equivalent size to the program
+FIND usual order of operation
+START with known state: A must be a certain value to end program
 
-can add comparison of checks while generating output
-i.e. stop iterations early where they already fail
+RUN program in reverse
+FOR each iteration, starting with end loop
+    TRACK the value, or range of values, that each register may be
+    USE output (in reverse) to get info on register value(s)
+    USE (reverse) modulo and division operations to get more info
+    ASSUME lowest value possible, initially
 
-given large number of loops being run, need to do something to reduce time
-would there be any pattern in the output?
+RETURN lowest starting value for A
 
-instead of generating the output, would it make more sense to start with the final output and work backwards from there?
-no - int division means specificity is lost
-but still have an idea of the order of magnitude e.g. A < 8 for last loop?
+working directly backwards doesn't give the right solution
+need to correct for remainder calculations when we get more info
 
-instead of going in order (+1), can we dynamically change this?
-e.g. multiply by 8 if size too small, or narrowing range if between
-will be performance cost from not ending program early
-
-try the previous mentioned reverse approach, i.e. going backwards
-even if specificity lost by division, we can generate a range
-this should give us a range to use for the starting A register
-hopefully this range is smaller than what we're currently looking through
-
-the problem is we can approximately track register A backwards
-but we also need to know registers B and C
-those are 0 at the start, but we can only work forwards with those
-can we work forwards with the program output?
-
-perhaps we can try something akin to a binary search?
-the end elements of the output don't change often
-so we can get the output at a mid-point and check if it matches
-then continue by looking at the next earliest element
-need to be careful - output doesn't change predictably
-can't expect sequential changes e.g. want 3 so too high if 4
-we just want to reduce the number of loops that we have to go through
-
-algorithm for getting limit
-1. start with last element of output
-2. get output for lower and upper bounds
-3. if bounds just outside where equal to last element, proceed to 5
-4. otherwise adjust (usually reduce) the bounds and go back to 2
-5. move to previous element of output and repeat 2-4
-6. when have iterated over half of elements, or limit is <threshold, stop
-
-using bounds doesn't seem to work like this
-it may be that matching elements changes too frequently
-need to be more precise with how algorithm settings are set
-or try another approach e.g. directly iterating until reaching the target
-
-found a solution, but it must be larger than the smallest possible one
-need to find a way to change the method to get out a smaller value
-could just make all references to lower bound increase slower
-(and decrease faster?)
-could increase the threshold, as assume matches are in a narrowish range
-
-used range to set adjustment
-makes the solution a bit more flexible (rather than using magic numbers)
-but still not particularly satisfying
-would like to figure out a more reliable way of solving this one
+collect values in current loop and roll back if reach a point where
+a register doesn't have a value it should
+this will require storing functions to re-run
 */
 
 namespace aoc17b
 {
     using RegisterInt = long long;
-    using Registers = std::map<char, RegisterInt>;
+    using Register = char;
+    using Registers = std::map<Register, RegisterInt>;
     using Program = std::vector<int>;
-    using Limit = long long;
-    using Limits = std::pair<Limit, Limit>;
     using OperandInt = long long;
+
+    using Instruction = int;
+    // index 0-2: register A-C, index 3-4: literal/combo operand,
+    // index 5: instruction
+    using Values = std::tuple<RegisterInt, RegisterInt, RegisterInt, OperandInt, OperandInt, Instruction>;
+    using ValueCollection = std::vector<Values>;
+
+    using Index = size_t;
+
+    // using RegisterRange = std::pair<OperandInt, OperandInt>;
+    // using RegisterRanges = std::map<Register, RegisterRange>;
+    // // value assigned when we don't know what register value to use
+    // constexpr OperandInt UNKNOWN_REGISTER_VALUE {-1};
 
     template <std::size_t N>
     Registers readRegisters(const std::array<std::string_view, N>& lines)
@@ -98,7 +68,7 @@ namespace aoc17b
             size_t colon {line.find(':')};
             RegisterInt num {std::stoll(std::string(line.substr(colon + 2)))};
             size_t firstSpace {line.find(' ')};
-            char reg {line.data()[firstSpace + 1]};
+            Register reg {line.data()[firstSpace + 1]};
             registers[reg] = num;
         }
         return registers;
@@ -125,15 +95,116 @@ namespace aoc17b
         {
             int num {line.data()[comma + 1] - '0'};
             program.push_back(num);
-            // need to move previous iteration of comma from previous match
             comma = line.find(',', ++comma);
         }
         return program;
     }
 
-    OperandInt getComboOperand(int pointer, const Program& program, const Registers& registers)
+    // checks some assumptions we make to simplify things
+    void checkProgram(const Program& program)
     {
-        OperandInt literalOperand {program[pointer + 1]};
+        assert(program.size() % 2 == 0 && "The program did not have an even number of elements.\n");
+
+        bool is_adv {false};
+        bool is_out {false};
+        for (size_t i{0}; i < program.size(); i += 2)
+        {
+            // we'll assume that the last operation is 3
+            // processing things is more complex if it isn't
+            if (program.at(i) == 3 && i != program.size() - 2)
+            {
+                throw std::out_of_range("Expected the jnz operation to only occur last, but it occurred before.\n");
+            }
+
+            // there must be an adv operation or things don't work
+            if (program.at(i) == 0)
+                is_adv = true;
+            // there must be an out operation or things don't work
+            if (program.at(i) == 5)
+                is_out = true;
+        }
+
+        // we'll assume that the last operand is 0
+        // it gets more complex if it isn't
+        assert(program.back() == 0 && "The last element isn't 0.\n");
+    }
+
+    // opcode 0
+    void adv(Registers& registers, OperandInt comboOperand)
+    {
+        registers['A'] = ((registers['A'] == 0) ? 1 : registers['A'] * std::pow(2, comboOperand));
+    }
+    
+    // opcode 1
+    void bxl(Registers& registers, OperandInt literalOperand)
+    {
+        registers['B'] ^= literalOperand;
+    }
+    
+    // opcode 2
+    void bst(Registers& registers, OperandInt comboOperand)
+    {
+        // add handling to roll back where register B != combo % 8
+        
+        // assert(registers['B'] == comboOperand % 8);
+        
+        // if (registers['B'] != comboOperand % 8)
+        // {
+        //     updateRegister(registers, literalOperand, comboOperand, registers['B'], 8);
+        // }
+    }
+    
+    // opcode 3
+    void jnz()
+    {
+        /* deliberately empty */
+    }
+    
+    // opcode 4
+    void bxc(Registers& registers)
+    {
+        registers['B'] ^= registers['C'];
+    }
+    
+    // opcode 5
+    void out()
+    {
+        /* deliberately empty */
+    }
+    
+    // opcode 6
+    void bdv(Registers& registers, OperandInt comboOperand)
+    {
+        // DIVISION OR MULTIPLICATION?
+        registers['B'] = registers['A'] / std::pow(2, comboOperand);
+    }
+    
+    // opcode 7
+    void cdv(Registers& registers, OperandInt comboOperand)
+    {
+        // DIVISION OR MULTIPLICATION?
+        registers['C'] = registers['A'] / std::pow(2, comboOperand);
+    }
+
+    void doInstruction(Instruction instruction, Registers& registers, OperandInt literalOperand, OperandInt comboOperand)
+    {
+        switch (instruction)
+        {
+        case 0:  return adv(registers, comboOperand);
+        case 1:  return bxl(registers, literalOperand);
+        case 2:  return bst(registers, comboOperand);
+        case 3:  return jnz();
+        case 4:  return bxc(registers);
+        case 5:  return out();
+        case 6:  return bdv(registers, comboOperand);
+        case 7:  return cdv(registers, comboOperand);
+        default: throw std::out_of_range("Given non-valid instruction.\n");
+        }
+    }
+
+    OperandInt getComboOperand(int pointer, const Program& reverseProgram, const Registers& registers)
+    {
+        OperandInt literalOperand {reverseProgram[pointer - 1]};
         if (literalOperand < 4)
             return literalOperand;
         else if (literalOperand < 7)
@@ -144,216 +215,199 @@ namespace aoc17b
             throw std::invalid_argument("Received unexpected operand.\n");
     }
 
-    Program runProgram(Registers registers, const Program& program)
+    Register getComboOperandRegister(OperandInt literalOperand)
     {
-        Program output {};
-        size_t pointer {0};
-        // think it makes more sense to keep all this together
-        // if this were a longer project, might be neater to send to functions
-        while (pointer < program.size() && output.size() <= program.size())
+        if (literalOperand >= 4 && literalOperand <= 6)
         {
-            OperandInt literalOperand {program[pointer + 1]};
-            OperandInt comboOperand {getComboOperand(pointer, program, registers)};
-            // opcode 0 (adv)
-            if (program[pointer] == 0)
+            return 'A' + (literalOperand - 4);
+        }
+        else
+            throw std::invalid_argument("Expected to get a register.\n");
+    }
+
+    // void updateRegister(Registers& registers, OperandInt literal, OperandInt compound, int remainder, int modulo)
+    // {
+    //     assert((literal > 3 && literal < 7) && "Register doesn't have an expected letter.\n");
+    //     Register reg {static_cast<Register>('A' + (literal - 4))};
+    //     assert(registers[reg] == compound && "Register value did not match value for compound literal.\n");
+    //     registers[reg] += (remainder - (compound % modulo));
+    // }
+
+    RegisterInt getRegisterValue(Register reg, const Values& values)
+    {
+        if (reg == 'A')
+            return std::get<0>(values);
+        else if (reg == 'B')
+            return std::get<1>(values);
+        else if (reg == 'C')
+            return std::get<2>(values);
+        else
+            throw std::invalid_argument("Given unexpected register.\n");
+    }
+
+    Index findLastChange(const ValueCollection& memory, Register wrongRegister)
+    {
+        Index index {memory.size() - 1};
+        RegisterInt finalValue {getRegisterValue(wrongRegister, memory.back())};
+        std::cout << "\t\t\twrong register: " << wrongRegister << '\n';
+        for (auto revIt{memory.rbegin()}; revIt != memory.rend(); ++revIt)
+        {
+            std::cout << "\t\t\t register A: " << std::get<0>(*revIt) << '\n';
+            std::cout << "\t\t\t register B: " << std::get<1>(*revIt) << '\n';
+            std::cout << "\t\t\t register C: " << std::get<2>(*revIt) << '\n';
+            RegisterInt newValue {getRegisterValue(wrongRegister, *revIt)};
+            if (newValue != finalValue)
+                // want instruction after change
+                return index + 1;
+            assert(index > 0 && "Expected index to be >0 before reducing.\n");
+            --index;
+        }
+        throw std::out_of_range("Did not find where the register's value last changed.\n");
+    }
+
+    void rerunRemainingInstructions(Registers& registers, const ValueCollection& memory, Index previousIndex)
+    {
+        for (size_t i{previousIndex}; i < memory.size(); ++i)
+        {
+            doInstruction(std::get<5>(memory[i]), registers, std::get<3>(memory[i]), std::get<4>(memory[i]));
+
+            std::cout << "\t\tA: " << registers['A'] << '\n';
+            std::cout << "\t\tB: " << registers['B'] << '\n';
+            std::cout << "\t\tC: " << registers['C'] << '\n';
+        }
+    }
+
+    // assumes only the most recent change was wrong
+    // and that only one register needs to be corrected
+    void correctAndRerunInstructions(Registers& registers, const ValueCollection& memory, Register wrongRegister, RegisterInt correctedValue)
+    {
+        std::cout << "\tCORRECTING\n";
+
+        std::cout << "\t\tinitial A: " << registers['A'] << '\n';
+        std::cout << "\t\tinitial B: " << registers['B'] << '\n';
+        std::cout << "\t\tinitial C: " << registers['C'] << '\n';
+
+        Index previousIndex {findLastChange(memory, wrongRegister)};
+        // revert register values
+        registers['A'] = std::get<0>(memory[previousIndex]);
+        registers['B'] = std::get<1>(memory[previousIndex]);
+        registers['C'] = std::get<2>(memory[previousIndex]);
+
+        std::cout << "\t\trevert A: " << registers['A'] << '\n';
+        std::cout << "\t\trevert B: " << registers['B'] << '\n';
+        std::cout << "\t\trevert C: " << registers['C'] << '\n';
+
+        // correct value
+        registers[wrongRegister] = correctedValue;
+        std::cout << "\t\tfix " << wrongRegister << ": " << registers[wrongRegister] << '\n';
+        // now re-run the rest of the instructions
+        rerunRemainingInstructions(registers, memory, previousIndex);
+    }
+
+    RegisterInt runReverseProgram(Registers origRegisters, const Program& reverseProgram)
+    {
+        Registers registers {origRegisters};
+
+        for (int i{0}; i < reverseProgram.size(); ++i)
+        {
+            ValueCollection memory {};
+
+            std::cout << '\t' << i << ' ' << reverseProgram.at(i) << '\n';
+            for (int j{1}; j < reverseProgram.size(); j += 2)
             {
-                registers['A'] /= std::pow(2, comboOperand);
-            }
-            // opcode 1 (bxl)
-            else if (program[pointer] == 1)
-            {
-                registers['B'] ^= literalOperand;
-            }
-            // opcode 2 (bst)
-            else if (program[pointer] == 2)
-            {
-                registers['B'] = comboOperand % 8;
-            }
-            // opcode 3 (jnz)
-            else if (program[pointer] == 3)
-            {
-                if (registers['A'] == 0)
-                    {/* deliberately empty */}
-                else
+                OperandInt literalOperand {reverseProgram[j - 1]};
+                OperandInt comboOperand {getComboOperand(j, reverseProgram, registers)};
+
+                memory.push_back(std::make_tuple(registers['A'], registers['B'], registers['C'], literalOperand, comboOperand, reverseProgram[j]));
+
+                // opcode 0 (adv)
+                if (reverseProgram[j] == 0)
                 {
-                    pointer = literalOperand;
-                    continue;
+                    adv(registers, comboOperand);
+
+                    std::cout << "0: " << 'A' << registers['A'] << ' ' << std::pow(2, comboOperand) << '\n';
+                    assert(registers['A'] >= 0 && "reg B0 wrong");
+                }
+                // opcode 1 (bxl)
+                else if (reverseProgram[j] == 1)
+                {
+                    bxl(registers,literalOperand);
+
+                    std::cout << "1: " << 'B' << registers['B'] << ' ' << literalOperand << '\n';
+                    assert(registers['B'] >= 0 && "reg A0 wrong");
+                }
+                // opcode 2 (bst)
+                else if (reverseProgram[j] == 2)
+                {
+                    if (registers['B'] != comboOperand % 8)
+                    {
+                        Register wrongRegister {'B'};
+                        // RegisterInt correctedValue {(comboOperand % 8) - registers['B']};
+                        RegisterInt correctedValue {(comboOperand % 8)};
+                        correctAndRerunInstructions(registers, memory, wrongRegister, correctedValue);
+
+                        // updateRegister(registers, literalOperand, comboOperand, registers['B'], 8);
+                    }
+
+                    bst(registers, comboOperand);
+
+                    std::cout << "2: " << 'B' << registers['B'] << ' ' << comboOperand << '\n';
+                    assert(registers['B'] >= 0 && "reg B1 wrong");
+                }
+                // opcode 3 (jnz)
+                else if (reverseProgram[j] == 3)
+                {
+                    // we assume this operation is never relevant
+                    // since we're working in reverse
+                    jnz();
+
+                    assert((i == 0 || registers['A'] > 0) && "Register A can't be 0 before last turn.\n");
+                    std::cout << "3: " << 'A' << registers['A'] << '\n';
+                }
+                // opcode 4 (bxc)
+                else if (reverseProgram[j] == 4)
+                {
+                    bxc(registers);
+
+                    std::cout << "4: " << 'B' << registers['B'] << " C" << registers['C'] << '\n';
+                    assert(registers['B'] >= 0 && "reg B2 wrong");
+                }
+                // opcode 5 (out)
+                else if (reverseProgram[j] == 5)
+                {
+                    out();
+
+                    if (comboOperand % 8 != reverseProgram.at(i))
+                    {
+                        Register wrongRegister {getComboOperandRegister(literalOperand)};
+                        // RegisterInt correctedValue {(comboOperand % 8) - reverseProgram[i]};
+                        RegisterInt correctedValue {(comboOperand % 8)};
+                        correctAndRerunInstructions(registers, memory, wrongRegister, correctedValue);
+                    }
+                    std::cout << "5: " << 'B' << registers['B'] << ' ' << reverseProgram.at(j) << '\n';
+                }
+                // opcode 6 (bdv)
+                else if (reverseProgram[j] == 6)
+                {
+                    // DIVISION OR MULTIPLICATION?
+                    bdv(registers, comboOperand);
+
+                    std::cout << "6: " << 'B' << registers['B'] << " A" << registers['A'] << ' ' << std::pow(2, comboOperand) << '\n';
+                    assert(registers['B'] >= 0 && "reg B3 wrong");
+                }
+                // opcode 7 (cdv)
+                else if (reverseProgram[j] == 7)
+                {
+                    // DIVISION OR MULTIPLICATION?
+                    cdv(registers, comboOperand);
+
+                    std::cout << "7: " << 'C' << registers['C'] << " A" << registers['A'] << ' ' << std::pow(2, comboOperand) << '\n';
+                    assert(registers['C'] >= 0 && "reg C0 wrong");
                 }
             }
-            // opcode 4 (bxc)
-            else if (program[pointer] == 4)
-            {
-                registers['B'] ^= registers['C'];
-            }
-            // opcode 5 (out)
-            else if (program[pointer] == 5)
-            {
-                output.push_back(comboOperand % 8);
-            }
-            // opcode 6 (bdv)
-            else if (program[pointer] == 6)
-            {
-                registers['B'] = registers['A'] / std::pow(2, comboOperand);
-            }
-            // opcode 7 (cdv)
-            else if (program[pointer] == 7)
-            {
-                registers['C'] = registers['A'] / std::pow(2, comboOperand);
-            }
-
-            // move pointer
-            pointer += 2;
         }
-        return output;
-    }
 
-    Limits getCopyProgramLimits(const Registers& registers, const Program& program)
-    {
-        Limit divisor {};
-        int count {0};
-        for (size_t i{0}; i < program.size(); ++i)
-        {
-            if (program[i] == 0 && i % 2 == 0)
-            {
-                divisor = program[i + 1];
-                ++count;
-            }
-        }
-        // this doesn't work if the divisor is a register (>3)
-        // more complex if there's more than one divisor, so skipping that
-        // setting default to 10 million loops
-        Limit defaultLoops {10'000'000};
-        if (divisor > 3 || count > 1)
-            return {0, defaultLoops};
-        
-
-        // adding 0.5 to account for std::pow outputting double
-        // based on this post: https://stackoverflow.com/questions/7094108/how-to-raise-an-int-or-long-to-a-power-in-c
-        Limit lowerBound {(Limit)(0.5 + std::pow(2, divisor * (program.size() - 1)))};
-        Limit upperBound {(Limit)(0.5 + std::pow(2, divisor * program.size()))};
-        return {lowerBound, upperBound};
-    }
-
-    int countProgramMatches(const Program& output, const Program& program)
-    {
-        int count {0};
-        for (int i{static_cast<int>(program.size() - 1)}; i >= 0; --i)
-        {
-            if (output.at(i) == program.at(i))
-                ++count;
-            else
-                break;
-        }
-        return count;
-    }
-
-    RegisterInt searchForSolution(const Registers& registers, const Program& program, const Limits& absoluteLimits, double adjust, RegisterInt threshold)
-    {
-        Program output {};
-        // set the initial bounds we'll be using
-        Limit lowerBound {absoluteLimits.first};
-        Limit upperBound {absoluteLimits.second};
-        RegisterInt midpoint {};
-        while (output != program)
-        {
-            // if we're under the threshold, run the rest
-            if (upperBound - lowerBound <= threshold)
-            {
-                for (RegisterInt n{lowerBound}; n <= upperBound; ++n)
-                {
-                    Registers finalRegisters {registers};
-                    finalRegisters['A'] = n;
-                    Program finalOutput {runProgram(finalRegisters, program)};
-                    if (finalOutput == program)
-                        return n;
-                }
-                // return sentinel value if no solution found
-                return 0;
-                // throw std::out_of_range("Solution was not found (threshold stage).\n");
-            }
-
-            Limit tempLowerBound {lowerBound};
-            Limit tempUpperBound {upperBound};
-
-            // this is inefficent
-            // would be faster to run only if lower/upper point change
-            Registers copyRegisters {registers};
-            copyRegisters['A'] = tempLowerBound;
-            Program lowerOutput {runProgram(copyRegisters, program)};
-            copyRegisters = registers;
-            copyRegisters['A'] = tempUpperBound;
-            Program upperOutput {runProgram(copyRegisters, program)};
-            
-            Limit midPoint {(tempUpperBound + tempLowerBound) / 2};
-            copyRegisters = registers;
-            copyRegisters['A'] = midPoint;
-            Program midOutput {runProgram(copyRegisters, program)};
-
-            // first need to guard against wrong output size
-            if (lowerOutput.size() != program.size() || upperOutput.size() != program.size())
-            {
-                // assumes lower has smaller or upper has larger size
-                if (lowerOutput.size() < program.size())
-                    lowerBound += (midPoint - tempLowerBound) * adjust * adjust;
-                if (upperOutput.size() > program.size())
-                    upperBound -= (tempUpperBound - midPoint) * adjust;
-                continue;
-            }
-
-            Limit lowerQuarter {static_cast<Limit>(tempLowerBound + (midPoint - tempLowerBound) / 2)};
-            Limit upperQuarter {static_cast<Limit>(tempUpperBound - (tempUpperBound - midPoint) / 2)};
-
-            copyRegisters = registers;
-            copyRegisters['A'] = lowerQuarter;
-            Program lowerQuarterOutput {runProgram(copyRegisters, program)};
-            copyRegisters = registers;
-            copyRegisters['A'] = upperQuarter;
-            Program upperQuarterOutput {runProgram(copyRegisters, program)};
-
-            // see how well each iteration matches program
-            int matchesLowerBound {countProgramMatches(lowerOutput, program)};
-            int matchesUpperBound {countProgramMatches(upperOutput, program)};
-            int matchesMidpoint {countProgramMatches(midOutput, program)};
-            int matchesLowerQuarter {countProgramMatches(lowerQuarterOutput, program)};
-            int matchesUpperQuarter {countProgramMatches(upperQuarterOutput, program)};
-
-            // might as well check in case we lucked out on any of these
-            if (matchesLowerBound == program.size())
-                return lowerBound;
-            else if (matchesUpperBound == program.size())
-                return upperBound;
-            else if (matchesMidpoint == program.size())
-                return midPoint;
-            else if (matchesLowerQuarter == program.size())
-                return lowerQuarter;
-            else if (matchesUpperQuarter == program.size())
-                return upperQuarter;
-            
-            // now we'll try to narrow the bounds
-            if (matchesLowerQuarter > matchesUpperQuarter)
-            {
-                upperBound = upperQuarter;
-            }
-            else if (matchesLowerQuarter < matchesUpperQuarter)
-            {
-                lowerBound = lowerQuarter;
-            }
-            else if (matchesLowerBound > matchesUpperBound)
-            {
-                upperBound -= (upperBound - upperQuarter) * adjust;
-            }
-            else if (matchesLowerBound < matchesUpperBound)
-            {
-                lowerBound += (lowerQuarter - lowerBound) * adjust * adjust;
-            }
-            else
-            {
-                upperBound -= (upperBound - upperQuarter) * adjust;
-                // change lower bound slower, as we want smallest solution
-                lowerBound += (lowerQuarter - lowerBound) * adjust * adjust;
-            }
-        }
-        throw std::out_of_range("Did not find a solution.\n");
+        return registers['A'];
     }
 
     template <std::size_t N>
@@ -362,23 +416,15 @@ namespace aoc17b
         Registers registers {readRegisters<N>(lines)};
         Program program {readProgram<N>(lines)};
 
-        // find absolute limits for loops
-        Limits absoluteLimits {getCopyProgramLimits(registers, program)};
+        checkProgram(program);
 
-        RegisterInt smallest {};
-        // threshold below which we run all remaining values
-        RegisterInt threshold {50'000};
-        // set how quickly we change the limits, between 0 and 1
-        // closer to 0 takes longer to change, and may get stuck in valleys
-        // closer to 1 takes less time to change, but may miss values
-        for (double adjust{0.10}; adjust < 0.40; adjust += 0.01)
-        {
-            RegisterInt solution {searchForSolution(registers, program, absoluteLimits, adjust, threshold)};
-            if (solution > 0 && (smallest == 0 || solution < smallest))
-                smallest = solution;
-        }
-        
-        return smallest;
+        Program reverseProgram (program.rbegin(), program.rend());
+
+        // we're starting in the end state and working back
+        // we know (from the logic) that A must be 0 in the end
+        registers['A'] = 0;
+
+        return runReverseProgram(registers, reverseProgram);
     }
 }
 
