@@ -46,3 +46,6 @@
 *.png
 *.jpeg
 *.jpg
+
+# cache
+__pycache__
