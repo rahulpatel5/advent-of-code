@@ -1,4 +1,4 @@
-from aoc3a_functions import *
+from aoc3a_functions import get_joltage
 import time
 
 def main() -> None:
