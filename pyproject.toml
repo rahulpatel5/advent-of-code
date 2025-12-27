@@ -1,0 +1,9 @@
+[project]
+name = "advent-of-code"
+version = "0.1.0"
+description = "uv install required python packages"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy>=2.4.0",
+]
