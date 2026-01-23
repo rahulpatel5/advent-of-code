@@ -1,9 +1,12 @@
 # advent-of-code 2025
-Solutions in python (part 1) and C++ (part 2).
+Solutions in python (part 1) and C++ (part 2), except day 10 part 2, which was done in python.
 
 Time taken (runtime) for each solution, to the nearest 0.001s if under 1 second.
 
 Note: C++ times are based on the default (i.e. no) g++ optimisation, -O0.
+
+Needed help with the following problems:
+- day 10, part 2
 
 ## **2025**
 
@@ -16,8 +19,8 @@ Note: C++ times are based on the default (i.e. no) g++ optimisation, -O0.
 | 5     | 0.040s   | 0.001s   |
 | 6     | 0.000s   | 0.002s   |
 | 7     | 0.004s   | 0.002s   |
-| 8     |    |    |
-| 9     | 0.031s   |    |
-| 10    | 0.135s   |    |
-| 11    |    |    |
+| 8     | 0.909s   | 4.2s     |
+| 9     | 0.031s   | 2.7s     |
+| 10    | 0.135s   | 1.8s     |
+| 11    | 0.002s   | 1.2s     |
 | 12    |    |    |
