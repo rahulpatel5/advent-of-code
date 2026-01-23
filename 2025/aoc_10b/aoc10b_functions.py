@@ -60,6 +60,15 @@ using the least squares solver of cvxpy
 found that inverted square matrix approach can give wrong solutions
 but also seem to be getting wrong solutions with cvxpy
 need to resort to looking up other approaches to figure out what is wrong
+
+found that one solution was one too high
+because previous approach short-circuits
+but mainly because I set up the optimisation wrong
+used this code to find the equation that was different to mine
+https://www.reddit.com/r/adventofcode/comments/1pj0pnx/comment/nuc6ppp
+then found how to optimise the cvxpy problem properly
+and able to remove all other parts of code that are now
+unnecessary, so it runs fast
 """
 
 def get_joltage_requirements(row: str) -> np.ndarray:
@@ -116,20 +125,17 @@ def matrix_multiplication(matrix1: np.ndarray, matrix2: np.ndarray) -> np.ndarra
     """
     return np.matmul(matrix1, matrix2)
 
-def matrix_solver(schematics: np.ndarray, joltages: np.ndarray, fixed_position: int, fixed_value: int, sentinel_value: int) -> int:
+def matrix_solver(schematics: np.ndarray, joltages: np.ndarray, sentinel_value: int) -> int:
     """
     Uses cvxpy package to solve matrix multiplication equation/problem.
     """
     # cvxpy documentation: https://www.cvxpy.org/examples/applications/nonneg_matrix_fact.html
     solution = cvxpy.Variable(shape=(1, schematics.shape[0]), integer=True, nonneg=True)
     
-    fixed_constraint = [solution[0, fixed_position] == fixed_value]
-    # add weights to prioritise earlier indices
-    # this will minimise the number of button presses
-    weights: np.ndarray = np.arange(1, solution.shape[1] + 1)
+    constraint = [joltages == solution @ schematics]
     
-    obj = cvxpy.Minimize(cvxpy.sum_squares(joltages - solution @ schematics) + 1e-6 * (weights @ solution.T))
-    prob = cvxpy.Problem(obj, fixed_constraint)
+    obj = cvxpy.Minimize(cvxpy.sum(solution))
+    prob = cvxpy.Problem(obj, constraint)
     prob.solve(solver=cvxpy.SCIP)
     # need to handle floating point accuracy issues
     solved = np.array(solution.value)
@@ -140,6 +146,8 @@ def matrix_solver(schematics: np.ndarray, joltages: np.ndarray, fixed_position: 
         return sentinel_value
     if (solved < 0).any():
         raise ValueError(f"Have a solution with a negative element:\n{solved}")
+    if abs(np.sum(solved) - np.sum(solution.value)) > 0.2:
+        raise ValueError(f"Have a bigger than expected difference between solved ({solved}) and solution {solution.value}")
     return round(np.sum(solved))
 
 def find_answer_lower_bound(joltages: np.ndarray, schematics: np.ndarray) -> int:
@@ -166,34 +174,11 @@ def solve_with_matrices(schematics: np.ndarray, joltages: np.ndarray) -> int:
     """
     sentinel_value: int = 999999
     min_solution: int = sentinel_value
+    # had used this before when trying more solutions
+    # to short-circuit when finding the smallest solution
     min_possible_answer: int = find_answer_lower_bound(joltages, schematics)
     
-    row_sums: np.ndarray = np.sum(schematics, axis=1)
-    used_sizes: list = []
-    is_first_loop: bool = True
-    while ((min_solution == sentinel_value) and (len(used_sizes) < len(np.unique(row_sums)))) or is_first_loop:
-        # discount any button press sizes that have already been looked at
-        adjusted_arr: np.ndarray = np.full(row_sums.shape, True)
-        for size in used_sizes:
-            adjusted_arr = adjusted_arr & (row_sums != size)
-        next_most_used_button: int = np.max(row_sums[adjusted_arr])
-        used_sizes.append(next_most_used_button)
-        next_buttons: tuple = np.where(row_sums == next_most_used_button)
-        
-        for fixed_position in next_buttons[0]:
-            # find max number of button presses for this position
-            position_row: np.ndarray = schematics[fixed_position, :]
-            row_dot: np.ndarray = position_row * joltages
-            max_value: int = np.min(row_dot[row_dot > 0])
-            
-            for fixed_value in range(max_value + 1, 0, -1):
-                new_min: int = matrix_solver(schematics, joltages, fixed_position, fixed_value, sentinel_value)
-                if new_min < min_solution:
-                    min_solution = new_min
-                    if min_solution == min_possible_answer:
-                        return min_solution
-        
-        is_first_loop = False
+    min_solution: int = matrix_solver(schematics, joltages, sentinel_value)
     
     if min_solution == sentinel_value:
         raise ValueError(f"Didn't find a solution for:\n{schematics}\n{joltages}")
@@ -221,6 +206,8 @@ def get_total_presses(input: list) -> int:
         joltages: np.ndarray = get_joltage_requirements(row)
         # get button press choices
         schematics: np.ndarray = get_schematics(row, joltages)
+        # was previously used when trying solutions
+        # before setting up the problem optimisation properly
         schematics: np.ndarray = reorder_schematics(schematics)
         
         min: int = solve_with_matrices(schematics, joltages)
