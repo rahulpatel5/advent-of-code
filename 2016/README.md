@@ -13,7 +13,7 @@ Time taken (runtime) for each solution, to the nearest 0.001s if under 1 second.
 | 6     | 0.014s   | 0.014s   | Clojure     |
 | 7     | 0.282s   | 0.317s   | Clojure     |
 | 8     | 0.017s   | 0.029s   | Clojure     |
-| 9     | 0.417s   | 32.9s    | Clojure     |
+| 9     | 0.417s   | 6.0s    | Clojure     |
 | 10    |    |    |    |
 | 11    |    |    |    |
 | 12    |    |    |    |
