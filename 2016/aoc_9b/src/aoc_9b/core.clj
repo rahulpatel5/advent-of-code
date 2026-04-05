@@ -49,19 +49,18 @@ X(8x2)(3x3)ABCY
     (remove nil? (map #(when (true? %1) (inc %2)) bracket-positions positions))))
 
 (defn get-multipliers-for-line [start-position [span multiplier] text-length]
-  (flatten (conj (vec (repeat start-position 1))
-                 (vec (repeat span multiplier))
-                 (vec (repeat (- text-length (+ start-position span)) 1)))))
+  (into [] (concat (into [] (repeat start-position 1))
+                   (into [] (repeat span multiplier))
+                   (into [] (repeat (- text-length (+ start-position span)) 1)))))
 
 (defn is-digit? [chr]
   (and (>= (int chr) (int \0)) (<= (int chr) (int \9))))
 
 (defn clean-multiplier [text multiplier]
-  (let [brackets (map #(or (= \( %) (= \) %)) (seq text))
-        digits (map is-digit? (seq text))
-        xs (map #(= \x %) (seq text))
-        any-of-above (map #(or %1 %2 %3) brackets digits xs)]
-    (map #(if (true? %1) 0 %2) any-of-above multiplier)))
+  (map #(if (or (= \( %1)
+                (= \) %1)
+                (is-digit? %1)
+                (= \x %1)) 0 %2) text multiplier))
 
 (defn get-multipliers [text]
   (let [identity-multipliers (repeat (count text) 1)
@@ -70,12 +69,12 @@ X(8x2)(3x3)ABCY
         start-positions (get-start-positions text)
         multipliers (map #(get-multipliers-for-line %1 %2 (count text)) start-positions repeat-info)
         cleaned-multipliers (map #(clean-multiplier text %) multipliers)]
-    (apply map * cleaned-multipliers)))
+    (reduce (fn [a b] (mapv * a b)) cleaned-multipliers)))
 
 (defn decompressed-length [input]
   (let [cleaned-input (clean-and-split-input input)
         multipliers (map get-multipliers cleaned-input)]
-    (reduce #(+ %1 (reduce + %2)) 0 multipliers)))
+    (reduce + (mapcat identity multipliers))))
 
 (defn -main []
   (let [start (System/nanoTime)
